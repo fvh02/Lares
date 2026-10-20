@@ -20,10 +20,12 @@ Konzept: [docs/KONZEPT.md](docs/KONZEPT.md)
 
 | Ordner | Was |
 |---|---|
-| [`core/`](core/README.md) | **Lares Core** – der zentrale Dienst (Version 0.5) |
+| [`core/`](core/README.md) | **Lares Core** – der zentrale Dienst (Version 0.6) |
 | [`sdk/python/`](sdk/python/README.md) | das SDK für Rooms: `from lares import room` |
+| [`os/`](os/README.md) | **Lares OS** – Lares auf einem USB-Stick, Rooms auf Stick oder Festplatte |
 | [`examples/hallo/`](examples/hallo) | ein Beispiel-Room |
 
 Status: Etappe 1 begonnen – Room-Format, Tokens und Rechte, Tresor, Benachrichtigungen, Ereignisse, Zeitpläne,
 Befehle, KI-Weiterleitung, SDK, Fernzugriff mit Tailscale und Cloudflare Tunnel sowie das Atrium mit Anmeldung
-(Passwort, Passkeys, Apple, Google) laufen. Room Store, Device Core und Lares-Image folgen.
+(Passwort, Passkeys, Apple, Google) laufen. Lares OS startet vom USB-Stick; die Rooms laufen wahlweise auf dem Stick oder der HDD/SSD des Geräts.
+Room Store, Device Core und A/B-Updates folgen.

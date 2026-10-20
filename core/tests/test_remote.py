@@ -85,6 +85,13 @@ if [ "$1" = inspect ]; then echo running; fi
 
 
 class ContainerCommandTest(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_command(self):
+        from lares_core.runtime import ContainerError
+        runtime = ContainerRuntime("/gibt/es/nicht/docker", "http://x", Path("/srv"))
+        with self.assertRaises(ContainerError) as ctx:
+            await runtime.remove("lares-room-x")
+        self.assertIn("fehlt", str(ctx.exception))
+
     async def test_services_get_keys_through_stdin(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)

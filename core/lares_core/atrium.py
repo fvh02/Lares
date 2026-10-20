@@ -106,7 +106,9 @@ async def state(request: web.Request) -> web.Response:
     account = request["konto"]
     return web.json_response({"eingerichtet": not accounts.needs_setup, "konto": account,
                               "anbieter": [p for p in PROVIDERS if configured(vault, p)],
-                              "darstellung": accounts.appearance(account["name"]) if account else None})
+                              "darstellung": accounts.appearance(account["name"]) if account else None,
+                              "speicher_waehlen": bool(account and account["rolle"] == "admin"
+                                                       and api.storage_choice_missing(request.app["core"]))})
 
 
 @routes.put("/atrium/darstellung")
@@ -157,6 +159,8 @@ async def setup(request: web.Request) -> web.Response:
     except AccountError as err:
         return api.fail(str(err))
     log.info("Lares eingerichtet, erstes Konto: %s", data["name"])
+    if request.app["core"]["lares_os"]:
+        await api.console_info(request.app["core"])      # the setup code disappears from the screen
     return with_session(request, web.json_response({"ok": True}), token)
 
 

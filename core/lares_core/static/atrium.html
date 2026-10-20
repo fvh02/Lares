@@ -201,6 +201,8 @@ async function call(method, path, body) {
   return data;
 }
 const api = (m, p, b) => call(m, "/api/v1/admin" + p, b);
+// replaceChildren, but leaving out empty entries (null, false) and flattening lists
+function put(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter(k => k != null && k !== false)); }
 function msg(el, text, ok) { el.textContent = text || ""; el.className = "msg " + (ok ? "ok" : "bad"); }
 function busy(btn, work) {
   return async (ev) => { ev && ev.preventDefault(); btn.disabled = true; try { await work(); } finally { btn.disabled = false; } };
@@ -283,24 +285,25 @@ async function route() {
     if (st.darstellung) applyLook(st.darstellung);
     if (!st.eingerichtet) return pageSetup();
     if (!me) return pageLogin(st.anbieter || []);
+    if (st.speicher_waehlen) return pageStorageSetup();
   }
   let name = location.hash.slice(1) || "start";
   if (!PAGES[name] || (PAGES[name].admin && me.rolle !== "admin")) name = "start";
   document.getElementById("head").hidden = false;
   const nav = document.getElementById("nav");
   const entries = Object.entries(PAGES).filter(([, p]) => !p.hidden && (!p.admin || me.rolle === "admin"));
-  nav.replaceChildren(...(entries.length > 1 ? entries.map(([k, p]) => h("a", {href: "#" + k, class: k === name ? "on" : ""}, p.title)) : []));
+  put(nav, ...(entries.length > 1 ? entries.map(([k, p]) => h("a", {href: "#" + k, class: k === name ? "on" : ""}, p.title)) : []));
   const avatar = h("button", {class: "avatar", title: me.name, "aria-label": "Konto"}, initials(me.name));
-  document.getElementById("me").replaceChildren(menu(avatar, [
+  put(document.getElementById("me"), menu(avatar, [
     h("div", {class: "who"}, h("b", {}, me.name), h("span", {class: "small muted"}, me.rolle === "admin" ? "Admin" : "Bewohner")),
     {label: "Mein Konto", run: () => { location.hash = "konto"; }},
     {label: "Abmelden", danger: true, run: async () => { await call("POST", "/atrium/abmelden"); me = null; location.hash = ""; route(); }},
   ]));
   document.title = PAGES[name].title + " · Lares";
-  $main.replaceChildren(h("p", {class: "muted"}, "Lädt …"));
+  put($main, h("p", {class: "muted"}, "Lädt …"));
   const banner = errorBanner();
   try { await PAGES[name].render(); if (banner) $main.prepend(banner); }
-  catch (err) { $main.replaceChildren(h("div", {class: "card"}, h("p", {class: "msg bad"}, err.message))); }
+  catch (err) { put($main, h("div", {class: "card"}, h("p", {class: "msg bad"}, err.message))); }
 }
 window.addEventListener("hashchange", route);
 
@@ -326,7 +329,7 @@ function pageSetup() {
     try { await call("POST", "/atrium/einrichten", {code: code.value, name: name.value, passwort: pw.value}); afterLogin(); }
     catch (err) { msg(out, err.message); }
   }));
-  $main.replaceChildren(h("div", {class: "auth"}, h("h1", {}, "Willkommen bei Lares"),
+  put($main, h("div", {class: "auth"}, h("h1", {}, "Willkommen bei Lares"),
     h("p", {class: "lead"}, "Lege das erste Konto an. Es verwaltet das System."), form));
   code.focus();
 }
@@ -382,9 +385,88 @@ function pageLogin(providers) {
   if (providers.includes("google")) alt.append(iconButton(GOOGLE, "Mit Google anmelden"));
   for (const b of alt.querySelectorAll("button.apple, button:not(.primary):not(.apple)"))
     b.addEventListener("click", () => { location.href = "/atrium/anmelden/" + (b.classList.contains("apple") ? "apple" : "google"); });
-  $main.replaceChildren(h("div", {class: "auth"}, h("h1", {}, "Lares"), h("p", {class: "lead"}, "Bitte anmelden."),
+  put($main, h("div", {class: "auth"}, h("h1", {}, "Lares"), h("p", {class: "lead"}, "Bitte anmelden."),
     errorBanner(), alt.children.length ? [alt, h("div", {class: "or"}, "oder mit Passwort")] : null, form));
   if (!alt.children.length) name.focus();
+}
+
+// -- where the rooms live (Lares OS) ---------------------------------------------------------------
+const GB = (b) => b == null ? "?" : b >= 1e12 ? (b / 1e12).toFixed(1).replace(".", ",") + " TB" : b >= 1e9 ? Math.round(b / 1e9) + " GB" : Math.round(b / 1e6) + " MB";
+const KIND = {usb: "USB", ssd: "SSD", nvme: "NVMe-SSD", hdd: "Festplatte (HDD)"};
+
+function storageChooser(data, done) {
+  const box = h("div");
+  const out = h("p", {class: "msg"});
+  let choice = data.gewaehlt ? (data.ort.ort === "usb" ? "usb" : data.ort.geraet) : null;
+  const wipeOk = h("input", {type: "checkbox"}), forceWipe = h("input", {type: "checkbox"});
+  const go = h("button", {class: "primary"}, "Hier einrichten");
+  const disks = data.laufwerke.filter(d => !d.system && d.groesse >= 4e9);
+  function option(id, title, lines, ok, current) {
+    return h("button", {type: "button", class: "design" + (choice === id ? " on" : ""), disabled: !ok, style: ok ? "" : "opacity:.55;cursor:default",
+      onclick: () => { choice = id; render(); }},
+      h("b", {}, title, current ? h("span", {class: "pill ok", style: "margin-left:8px"}, "aktuell") : null),
+      h("span", {class: "small muted", style: "display:block;padding:0 12px 12px;margin-top:-6px"}, lines.filter(Boolean).join(" · ")));
+  }
+  function render() {
+    const current = data.gewaehlt ? (data.ort.ort === "usb" ? "usb" : data.ort.geraet) : null;
+    const sel = disks.find(d => d.geraet === choice);
+    const wipes = sel && (!sel.lares_speicher || forceWipe.checked);
+    put(box, 
+      h("div", {class: "designs"},
+        option("usb", "USB-Stick", ["Lares-Stick", GB(data.usb_frei) + " frei", "nichts einzurichten"], true, current === "usb"),
+        disks.map(d => option(d.geraet, d.modell, [KIND[d.typ] || d.typ, GB(d.groesse),
+          !d.geeignet ? "zu klein (mind. 16 GB)" : d.lares_speicher ? "Lares-Speicher gefunden" : d.partitionen.length ? "enthält Daten" : "leer"],
+          d.geeignet, current === d.geraet))),
+      disks.length ? null : h("p", {class: "small muted"}, "Keine weitere Festplatte gefunden – die Rooms laufen dann auf dem Stick."),
+      sel ? h("div", {class: "card", style: "margin-top:12px"},
+        h("b", {}, `${sel.modell} – ${GB(sel.groesse)}`),
+        sel.partitionen.length ? h("ul", {class: "rights small"}, sel.partitionen.map(p => h("li", {}, `${p.name}: ${GB(p.groesse)} ${p.dateisystem}${p.name_label ? " „" + p.name_label + "“" : ""}`))) : null,
+        sel.lares_speicher ? [h("p", {class: "small"}, "Hier liegt schon ein Lares-Speicher – er wird übernommen, die Rooms darauf bleiben erhalten."),
+          h("label", {class: "check"}, forceWipe, "Stattdessen neu einrichten (löscht alles darauf)")] : null,
+        wipes ? h("label", {class: "check", style: "color:var(--bad)"}, wipeOk, `Ja, alle Daten auf ${sel.modell} löschen`) : null) : null,
+      choice === "usb" && current && current !== "usb" ? h("p", {class: "small muted"}, "Rooms und Container-Images werden vom Laufwerk zurück auf den Stick kopiert.") : null,
+      h("div", {class: "actions"}, go), out);
+    go.disabled = !choice || choice === current || (wipes && !wipeOk.checked);
+  }
+  forceWipe.addEventListener("change", render);
+  wipeOk.addEventListener("change", render);
+  go.addEventListener("click", busy(go, async () => {
+    const sel = disks.find(d => d.geraet === choice);
+    const body = {ziel: choice};
+    if (sel) { body.loeschen = !sel.lares_speicher || forceWipe.checked; body.bestaetigt = choice; }
+    try {
+      const res = await api("POST", "/speicher", body);
+      if (res.fertig) return done();
+      await followMove(box);
+      done();
+    } catch (err) { msg(out, err.message); }
+  }));
+  render();
+  return box;
+}
+
+async function followMove(box) {
+  const list = h("ol", {class: "rights"}), out = h("p", {class: "msg"});
+  put(box, h("p", {}, "Die Rooms ziehen um – das kann bei vielen Container-Images ein paar Minuten dauern. Bitte Lares nicht ausschalten."), list, out);
+  for (;;) {
+    await new Promise(r => setTimeout(r, 1500));
+    let st;
+    try { st = await api("GET", "/speicher"); } catch { continue; }
+    const v = st.vorgang;
+    if (!v) return;
+    put(list, ...v.schritte.map(s => h("li", {}, s)));
+    if (v.fehler) { msg(out, v.fehler); throw new Error(v.fehler); }
+    if (v.fertig) { msg(out, "Fertig.", true); return; }
+  }
+}
+
+async function pageStorageSetup() {
+  document.getElementById("head").hidden = true;
+  const data = await api("GET", "/speicher");
+  put($main, h("div", {style: "max-width:720px;margin:6vh auto 0"}, h("h1", {}, "Wo sollen die Rooms laufen?"),
+    h("p", {class: "lead"}, "Lares selbst bleibt auf dem USB-Stick. Die Rooms und ihre Container-Images können auch auf der Festplatte oder SSD dieses Geräts liegen – schneller und mit mehr Platz. Das lässt sich später unter „System“ ändern."),
+    data.fehler ? h("div", {class: "banner"}, data.fehler) : null,
+    h("div", {class: "card"}, storageChooser(data, () => { me = null; route(); }))));
 }
 
 // -- start ----------------------------------------------------------------------------------------
@@ -392,7 +474,7 @@ async function pageStart() {
   const rooms = await call("GET", "/atrium/rooms");
   const hour = new Date().getHours();
   const hello = hour < 11 ? "Guten Morgen" : hour < 18 ? "Hallo" : "Guten Abend";
-  $main.replaceChildren(h("h1", {}, `${hello}, ${me.name}`), h("p", {class: "lead"}, "Deine Rooms"),
+  put($main, h("h1", {}, `${hello}, ${me.name}`), h("p", {class: "lead"}, "Deine Rooms"),
     rooms.length ? h("div", {class: "tiles"}, rooms.map(r => h("a", {class: "tile", href: `/r/${encodeURIComponent(r.id)}/`},
       h("span", {class: "ic"}, initials(r.name)), h("b", {}, r.name), h("small", {}, r.beschreibung || ""))))
       : h("div", {class: "empty"}, me.rolle === "admin" ? "Noch keine Rooms mit Oberfläche – unter „Rooms“ installieren." : "Noch keine Rooms."));
@@ -402,7 +484,7 @@ async function pageStart() {
 async function pageRooms() {
   const rooms = await api("GET", "/rooms");
   const add = h("button", {class: "rtile add", onclick: addRoomDialog}, h("span", {class: "plus"}, "+"), "Room hinzufügen");
-  $main.replaceChildren(h("h1", {}, "Rooms"), h("p", {class: "lead"}, "Installierte Rooms – über ⋯ steuern."),
+  put($main, h("h1", {}, "Rooms"), h("p", {class: "lead"}, "Installierte Rooms – über ⋯ steuern."),
     h("div", {class: "rgrid"}, rooms.map(roomTile), add));
 }
 
@@ -506,7 +588,7 @@ function addRoomDialog() {
   const names = {datei: "Datei", text: "Einfügen", link: "Link", github: "GitHub"};
   const show = (k) => {
     for (const b of tabs.children) b.className = b.dataset.k === k ? "on" : "";
-    body.replaceChildren(...[views[k]()].flat()); msg(out, "");
+    put(body, ...[views[k]()].flat()); msg(out, "");
   };
   for (const k of Object.keys(views)) tabs.append(h("button", {"data-k": k, role: "tab", onclick: () => show(k)}, names[k]));
   const d = dialog("Room hinzufügen", tabs, body, out);
@@ -523,10 +605,10 @@ async function installRoom(payload, confirmed, out, d) {
       const ok = h("button", {class: "primary"}, "Erlauben und installieren");
       ok.addEventListener("click", busy(ok, () => installRoom({room_yaml: err.data.room_yaml}, true, out, d)));
       out.className = "msg";
-      out.replaceChildren(h("div", {class: "card", style: "margin-top:14px"}, h("b", {}, `${err.data.name} ${err.data.version} möchte:`),
+      put(out, h("div", {class: "card", style: "margin-top:14px"}, h("b", {}, `${err.data.name} ${err.data.version} möchte:`),
         err.data.rechte.length ? h("ul", {class: "rights"}, err.data.rechte.map(r => h("li", {}, r))) : h("p", {}, "keine besonderen Rechte"),
         h("div", {class: "actions"}, ok)));
-    } else { out.className = "msg bad"; out.replaceChildren(err.message); }
+    } else { out.className = "msg bad"; put(out, err.message); }
   }
 }
 
@@ -554,7 +636,7 @@ async function pageKeys() {
   add.addEventListener("click", busy(add, async () => {
     try { await api("PUT", `/schluessel/${encodeURIComponent(name.value.trim())}`, {wert: value.value}); route(); } catch (err) { msg(out, err.message); }
   }));
-  $main.replaceChildren(h("h1", {}, "Schlüssel"), h("p", {class: "lead"}, "API-Keys, Passwörter und Tokens. Sie werden verschlüsselt gespeichert und nie wieder angezeigt."),
+  put($main, h("h1", {}, "Schlüssel"), h("p", {class: "lead"}, "API-Keys, Passwörter und Tokens. Sie werden verschlüsselt gespeichert und nie wieder angezeigt."),
     h("div", {}, rows), h("h2", {}, "Weiterer Schlüssel"), h("div", {class: "card grid2"}, h("div", {}, field("Name", name)), h("div", {}, field("Wert", value)),
       h("div", {class: "actions"}, add), out));
 }
@@ -590,7 +672,21 @@ async function pageSystem() {
   const test = h("button", {}, "Testnachricht senden");
   const testOut = h("p", {class: "msg"});
   test.addEventListener("click", busy(test, async () => { try { await api("POST", "/test/melden"); msg(testOut, "Gesendet.", true); } catch (err) { msg(testOut, err.message); } }));
-  $main.replaceChildren(h("h1", {}, "System"), h("p", {class: "lead"}, "Wohnort, Zeit, Bewohner und Ruhezeit."),
+  const storage = await api("GET", "/speicher").catch(() => ({lares_os: false}));
+  let storageCard = null;
+  if (storage.lares_os) {
+    const where = storage.ort.ort === "laufwerk" ? `${storage.ort.modell} (${KIND[storage.ort.typ] || storage.ort.typ})` : "USB-Stick";
+    const change = h("button", {}, "Ändern");
+    change.addEventListener("click", async () => {
+      const data = await api("GET", "/speicher");
+      const d = dialog("Wo sollen die Rooms laufen?", storageChooser(data, () => { d.close(); route(); }));
+    });
+    storageCard = h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Speicher für Rooms"),
+      storage.fehler ? h("div", {class: "banner"}, storage.fehler) : null,
+      h("div", {class: "list-row"}, h("div", {style: "flex:1"}, h("b", {}, where), h("div", {class: "small muted"},
+        `${GB(storage.frei)} frei von ${GB(storage.gesamt)} · Lares selbst läuft immer vom USB-Stick`)), change));
+  }
+  put($main, h("h1", {}, "System"), h("p", {class: "lead"}, "Wohnort, Zeit, Bewohner und Ruhezeit."), storageCard,
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Wohnort"), field("Name", pname), h("div", {class: "grid2"}, h("div", {}, field("Breitengrad", lat)), h("div", {}, field("Längengrad", lon))), h("div", {class: "actions"}, here)),
     h("div", {class: "card grid2"}, h("div", {}, field("Zeitzone", tz)), h("div", {}, field("Sprache", lang))),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Bewohner"), h("p", {class: "small muted"}, "Nachrichten gehen an die erste Person mit Handynummer."), people,
@@ -626,7 +722,7 @@ async function pageRemote() {
   }));
   const releases = Object.entries(r.freigaben);
 
-  $main.replaceChildren(h("h1", {}, "Fernzugriff"), h("p", {class: "lead"}, "Tailscale für deine Geräte, Cloudflare Tunnel für Rooms im Internet."),
+  put($main, h("h1", {}, "Fernzugriff"), h("p", {class: "lead"}, "Tailscale für deine Geräte, Cloudflare Tunnel für Rooms im Internet."),
     h("div", {class: "card"}, h("div", {class: "row"}, h("h2", {class: "grow", style: "margin:0"}, "Tailscale"), state(ts)),
       h("p", {class: "small muted"}, "Privat: nur deine Geräte im Tailnet. Lares ist dann unter https://", ts.hostname, ".<tailnet>.ts.net erreichbar."),
       ts.anmelden ? h("p", {}, h("a", {href: ts.anmelden, target: "_blank", rel: "noopener"}, "Jetzt bei Tailscale anmelden →")) : null,
@@ -669,7 +765,7 @@ async function pageAccounts() {
     Object.entries(providers).map(([p, c]) => h("div", {class: "list-row"}, h("div", {style: "flex:1;min-width:0"}, h("b", {}, c.name),
       h("div", {class: "small muted", style: "word-break:break-all"}, `${location.origin.replace(/^http:/, "https:")}/atrium/anmelden/${p}/zurueck`),
       c.fehlt.length ? h("div", {class: "small muted"}, "Fehlt: " + c.fehlt.join(", ")) : null), c.eingerichtet ? pill("eingerichtet", "ok") : pill("fehlt", "warn"))));
-  $main.replaceChildren(h("h1", {}, "Konten"), h("p", {class: "lead"}, "Admins verwalten das System, Bewohner öffnen die Rooms."), h("div", {}, rows),
+  put($main, h("h1", {}, "Konten"), h("p", {class: "lead"}, "Admins verwalten das System, Bewohner öffnen die Rooms."), h("div", {}, rows),
     h("h2", {}, "Neues Konto"), h("div", {class: "card"}, h("div", {class: "grid2"}, h("div", {}, field("Name", name)), h("div", {}, field("Passwort", pw))),
       field("Rolle", role), h("div", {class: "actions"}, add), out), providerCard);
 }
@@ -696,7 +792,7 @@ async function pageMe() {
       const code = h("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123456"});
       const ok = h("button", {class: "primary"}, "Bestätigen");
       ok.addEventListener("click", busy(ok, async () => { try { await call("POST", "/atrium/zwei-faktor/bestaetigen", {code: code.value}); route(); } catch (err) { msg(tfOut, err.message); } }));
-      tfBox.replaceChildren(h("p", {}, "Auf dem iPhone den Link öffnen (Passwörter-App) oder das Geheimnis in einer Authenticator-App eintragen:"),
+      put(tfBox, h("p", {}, "Auf dem iPhone den Link öffnen (Passwörter-App) oder das Geheimnis in einer Authenticator-App eintragen:"),
         h("p", {}, h("a", {href: s.link}, "In Authenticator-App öffnen →")), h("p", {class: "small"}, h("code", {}, s.geheimnis)),
         field("Code aus der App", code), h("div", {class: "actions"}, ok));
     }));
@@ -749,7 +845,7 @@ async function pageMe() {
   const lookBox = h("div");
   const DESIGNS = [["klassisch", "Klassisch", "Warm und ruhig, wie bisher."], ["himmel", "Himmel", "Das Wetter an deinem Ort im Hintergrund, Milchglas davor – mit Sonnenauf- und -untergang zur echten Zeit."]];
   function renderLook() {
-    lookBox.replaceChildren(
+    put(lookBox, 
       h("div", {class: "designs"}, DESIGNS.map(([id, name, text]) => h("button", {class: "design" + (look.design === id ? " on" : ""), "aria-pressed": look.design === id ? "true" : "false",
         onclick: () => saveLook({design: id})}, h("div", {class: "pv " + id}, h("i"), h("i"), h("i"), h("i")), h("b", {}, name),
         h("span", {class: "small muted", style: "display:block;padding:0 12px 12px;margin-top:-6px"}, text)))),
@@ -759,7 +855,7 @@ async function pageMe() {
   }
   renderLook();
 
-  $main.replaceChildren(h("h1", {}, me.name), h("p", {class: "lead"}, me.rolle === "admin" ? "Admin" : "Bewohner"),
+  put($main, h("h1", {}, me.name), h("p", {class: "lead"}, me.rolle === "admin" ? "Admin" : "Bewohner"),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Darstellung"), lookBox, lookOut),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Passkeys"),
       h("p", {class: "small muted"}, "Anmelden mit Face ID, Touch ID oder der Geräte-PIN – ohne Passwort. Geht nur über die HTTPS-Adresse (Tailscale)."),

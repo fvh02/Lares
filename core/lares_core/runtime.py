@@ -67,18 +67,24 @@ class ContainerRuntime:
     """Uses the docker or podman command; rooms and services share the network "lares" with the core."""
 
     def __init__(self, command: str, core_url: str, host_data_dir: Path, local_data_dir: Path | None = None,
-                 network: str = "lares"):
+                 network: str = "lares", host_rooms_dir: Path | None = None, core_on_host: bool = False):
         self.name, self.command, self.core_url, self.network = command, command, core_url, network
         self.host_data_dir = host_data_dir                         # the data partition as the host sees it
         self.local_data_dir = local_data_dir or host_data_dir      # … and as the core sees it
+        self.host_rooms_dir = host_rooms_dir or host_data_dir / "rooms"
+        # on Lares OS the core runs on the host itself: containers reach it as "lares-core" through the host gateway
+        self.core_on_host = core_on_host
 
     def address(self, room_id: str, port: int) -> str:
         return f"{room_container(room_id)}:{port}"
 
     async def _run(self, *args: str, check: bool = True, stdin: str | None = None) -> str:
-        proc = await asyncio.create_subprocess_exec(
-            self.command, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                self.command, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL)
+        except FileNotFoundError:
+            raise ContainerError(f"Der Befehl {self.command} fehlt auf diesem System") from None
         out, _ = await proc.communicate(stdin.encode() if stdin is not None else None)
         text = out.decode(errors="replace").strip()
         if check and proc.returncode:
@@ -90,8 +96,9 @@ class ContainerRuntime:
             raise ContainerError("Zeilenumbruch in einer Umgebungsvariable")
         await self.remove(name)
         await self._run("network", "create", self.network, check=False)
+        host = ["--add-host", "lares-core:host-gateway"] if self.core_on_host else []
         args = ["run", "-d", "--name", name, "--network", self.network, "--restart", "unless-stopped",
-                "--env-file", "/dev/stdin", *extra, image, *command]
+                "--env-file", "/dev/stdin", *host, *extra, image, *command]
         # Tokens go in through stdin, so they never show up in the process list.
         await self._run(*args, stdin="".join(f"{k}={v}\n" for k, v in env.items()))
 
@@ -104,7 +111,7 @@ class ContainerRuntime:
         image = manifest.image.replace("{arch}", ARCH)
         if ":" not in image.rsplit("/", 1)[-1]:
             image += f":{manifest.version}"
-        extra = ["--label", f"lares.room={manifest.id}", "-v", f"{self.host_data_dir / 'rooms' / manifest.id}:/data"]
+        extra = ["--label", f"lares.room={manifest.id}", "-v", f"{self.host_rooms_dir / manifest.id}:/data"]
         if manifest.ram:
             extra += ["--memory", manifest.ram]
         await self._start(room_container(manifest.id), image,

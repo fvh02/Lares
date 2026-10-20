@@ -13,6 +13,7 @@ import ipaddress
 import os
 import re
 import secrets
+import shutil
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -20,7 +21,7 @@ from urllib.parse import urlsplit
 import aiohttp
 from aiohttp import web
 
-from . import __version__, storage
+from . import __version__, laufwerke, storage
 from .accounts import AccountError, Accounts
 from .bus import Bus, Busy, matches
 from .manifest import EVENT, ManifestError, parse
@@ -683,6 +684,68 @@ async def admin_login_providers(request: web.Request) -> web.Response:
                                   "fehlt": [k for k in c["keys"] if not vault.get(k)]} for p, c in PROVIDERS.items()})
 
 
+# -- where the rooms live (Lares OS) --------------------------------------------------------------
+def storage_choice_missing(app: web.Application) -> bool:
+    return bool(app["lares_os"]) and laufwerke.load_choice(app["data_dir"]) is None
+
+
+@routes.get("/api/v1/admin/speicher")
+async def admin_storage(request: web.Request) -> web.Response:
+    require_admin(request)
+    app = core_of(request)
+    if not app["lares_os"]:
+        return web.json_response({"lares_os": False})
+    choice = laufwerke.load_choice(app["data_dir"])
+    base = laufwerke.base_for(choice, app["data_dir"])
+    try:
+        disks = [d.public() for d in await laufwerke.list_disks()]
+    except (laufwerke.LaufwerkError, OSError, ValueError) as err:
+        disks, problem = [], str(err)
+    else:
+        problem = ""
+    error_file = laufwerke.RUN / "speicher-fehler"
+    usage = shutil.disk_usage(base) if base.exists() else None
+    move = app["speicher"].get("vorgang")
+    return web.json_response({
+        "lares_os": True, "gewaehlt": choice is not None, "ort": choice or {"ort": "usb"},
+        "frei": usage.free if usage else None, "gesamt": usage.total if usage else None,
+        "usb_frei": shutil.disk_usage(app["data_dir"]).free if app["data_dir"].exists() else None,
+        "fehler": (error_file.read_text() if error_file.exists() else "") or problem,
+        "laufwerke": disks, "vorgang": move.public() if move else None})
+
+
+@routes.post("/api/v1/admin/speicher")
+async def admin_set_storage(request: web.Request) -> web.Response:
+    """{ziel: "usb" or "/dev/…", loeschen?: bool, bestaetigt?: "/dev/…"} – moves rooms and container images."""
+    require_admin(request)
+    app = core_of(request)
+    if not app["lares_os"]:
+        return fail("Nur auf Lares OS")
+    move = app["speicher"].get("vorgang")
+    if move and not (move.done or move.error):
+        return fail("Ein Umzug läuft schon", 409)
+    data = await body_of(request)
+    target, wipe = str(data.get("ziel") or ""), bool(data.get("loeschen"))
+    if target != "usb":
+        disks = {d.path: d for d in await laufwerke.list_disks()}
+        disk = disks.get(target)
+        if disk is None or not disk.public()["geeignet"]:
+            return fail("Dieses Laufwerk geht nicht (nicht gefunden, der Lares-Stick selbst oder kleiner als 16 GB)")
+        if (wipe or not disk.lares_partition) and data.get("bestaetigt") != target:
+            return fail(f"Bitte bestätigen, dass alle Daten auf {disk.model} gelöscht werden", 409)
+    elif laufwerke.load_choice(app["data_dir"]) is None:
+        storage.save(laufwerke.config_file(app["data_dir"]), {"ort": "usb"})     # first choice: nothing to move
+        return web.json_response({"ort": {"ort": "usb"}, "fertig": True})
+
+    async def start_all(base: Path) -> None:
+        await start_everything(app)      # the folders are bound to the same places as before: nothing to change
+
+    move = laufwerke.Move(app["data_dir"], target, wipe, lambda: stop_everything(app), start_all)
+    app["speicher"]["vorgang"] = move
+    app["speicher"]["task"] = asyncio.create_task(move())
+    return web.json_response(move.public(), status=202)
+
+
 @routes.get("/api/v1/status")
 async def status(request: web.Request) -> web.Response:
     return web.json_response({"lares": __version__, "laufzeit": core_of(request)["runtime"].name})
@@ -707,15 +770,60 @@ def admin_token_of(core_dir: Path) -> str:
     return token
 
 
-def make_runtime(kind: str, core_url: str, host_data_dir: Path, local_data_dir: Path):
+def make_runtime(kind: str, core_url: str, host_data_dir: Path, local_data_dir: Path,
+                 host_rooms_dir: Path | None = None, core_on_host: bool = False):
     if kind in ("docker", "podman"):
-        return ContainerRuntime(kind, core_url, host_data_dir, local_data_dir)
+        return ContainerRuntime(kind, core_url, host_data_dir, local_data_dir, host_rooms_dir=host_rooms_dir,
+                                core_on_host=core_on_host)
     return NoRuntime()
 
 
+CONSOLE = Path(os.environ.get("LARES_CONSOLE_ISSUE", "/run/issue.d/50-lares.issue"))
+
+
+async def console_info(app: web.Application) -> None:
+    """On Lares OS: the screen of the device shows where the Atrium is – and the setup code before the first login."""
+    lines = ["", f"  Lares {__version__}", "",
+             "  Atrium:  http://\\4   oder   http://lares.local", ""]
+    if app["accounts"].needs_setup:
+        lines += [f"  Einrichtungscode:  {app['accounts'].setup_code()}", ""]
+    try:
+        CONSOLE.parent.mkdir(parents=True, exist_ok=True)
+        CONSOLE.write_text("\n".join(lines) + "\n")
+        proc = await asyncio.create_subprocess_exec("agetty", "--reload", stdout=asyncio.subprocess.DEVNULL,
+                                                    stderr=asyncio.subprocess.DEVNULL)
+        await proc.wait()
+    except OSError:
+        pass
+
+
+async def start_everything(app: web.Application) -> None:
+    """Starts the active rooms (each with a fresh token) and the switched-on services."""
+    for room in list(app["registry"].rooms.values()):
+        if room.active:
+            try:
+                await start_room(app, room)
+            except ContainerError as err:
+                log.warning("%s nicht gestartet: %s", room.id, err)
+    for name in SERVICES:
+        if app["remote"].data[name]["aktiv"]:
+            try:
+                await start_service(app, name)
+            except (ContainerError, ValueError) as err:
+                log.warning("Dienst %s nicht gestartet: %s", name, err)
+
+
+async def stop_everything(app: web.Application) -> None:
+    for room in list(app["registry"].rooms.values()):
+        await app["runtime"].remove(room_container(room.id))
+    for name in SERVICES:
+        await app["runtime"].remove(service_container(name))
+
+
 def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: str = "lares-core",
-             home_port: int = 8000, public_port: int = 8001) -> web.Application:
-    core_dir, rooms_dir = data_dir / "core", data_dir / "rooms"
+             home_port: int = 8000, public_port: int = 8001, rooms_dir: Path | None = None,
+             lares_os: bool = False) -> web.Application:
+    core_dir, rooms_dir = data_dir / "core", rooms_dir or data_dir / "rooms"
     core_dir.mkdir(parents=True, exist_ok=True)
     app = web.Application(client_max_size=12 * 1024 * 1024, middlewares=[security_headers])
     app["core_dir"] = core_dir
@@ -729,6 +837,8 @@ def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: s
     app["remote"] = Remote(core_dir, app["vault"], core_host, home_port, public_port)
     app["accounts"] = Accounts(core_dir)
     app["atrium_state"] = {}        # passkey challenges and Apple/Google logins in progress
+    app["data_dir"], app["lares_os"] = data_dir, lares_os
+    app["speicher"] = {}            # a move of the rooms in progress
     app.add_routes(routes)
 
     async def on_startup(app: web.Application) -> None:
@@ -738,21 +848,12 @@ def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: s
         if app["accounts"].needs_setup:
             log.warning("Lares ist noch nicht eingerichtet – Einrichtungscode für das Atrium: %s",
                         app["accounts"].setup_code())
+        if lares_os:
+            await console_info(app)
         if background:
             app["scheduler_task"] = asyncio.create_task(app["scheduler"].run())
             if not isinstance(app["runtime"], NoRuntime):
-                for room in list(app["registry"].rooms.values()):
-                    if room.active:
-                        try:
-                            await start_room(app, room)
-                        except ContainerError as err:
-                            log.warning("%s nicht gestartet: %s", room.id, err)
-                for name in SERVICES:
-                    if app["remote"].data[name]["aktiv"]:
-                        try:
-                            await start_service(app, name)
-                        except (ContainerError, ValueError) as err:
-                            log.warning("Dienst %s nicht gestartet: %s", name, err)
+                await start_everything(app)
 
     async def on_cleanup(app: web.Application) -> None:
         task = app.get("scheduler_task")

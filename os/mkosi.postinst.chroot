@@ -1,0 +1,13 @@
+#!/bin/sh
+# Runs inside the image at the end of the build.
+set -e
+systemctl enable systemd-networkd systemd-resolved systemd-timesyncd avahi-daemon docker data.mount \
+    lares-speicher.service lares-core.service
+systemctl enable systemd-networkd-wait-online.service || true
+# systemd-repart creates the data partition at the first start (also when the stick is bigger than the image)
+systemctl enable systemd-repart.service || true
+ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+# mDNS for lares.local through Avahi
+sed -i 's/^hosts:.*/hosts:          files mdns4_minimal [NOTFOUND=return] resolve dns myhostname/' /etc/nsswitch.conf
+echo "lares" > /etc/hostname
+python3 -m compileall -q /opt/lares/lares_core
