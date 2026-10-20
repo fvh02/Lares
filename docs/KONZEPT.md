@@ -1,6 +1,6 @@
 # Lares – Konzept
 
-> Stand: Oktober 2026 · Status: Etappe 1 und 2 laufen – Lares Core 0.6 mit Atrium, Lares OS vom USB-Stick (siehe [core/README.md](../core/README.md))
+> Stand: Oktober 2026 · Status: Etappe 1 und 2 laufen – Lares Core 0.7 mit Atrium, Lares OS vom USB-Stick (siehe [core/README.md](../core/README.md))
 
 Lares ist ein eigenes, schlankes Betriebssystem für den Heimserver. Ein Kern verwaltet alles – Schlüssel,
 Benachrichtigungen, KI, Standort, Geräte –, und darauf laufen **Rooms**: kleine Apps wie ein Spieleabend, eine

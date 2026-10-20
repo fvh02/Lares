@@ -686,7 +686,66 @@ async function pageSystem() {
       h("div", {class: "list-row"}, h("div", {style: "flex:1"}, h("b", {}, where), h("div", {class: "small muted"},
         `${GB(storage.frei)} frei von ${GB(storage.gesamt)} · Lares selbst läuft immer vom USB-Stick`)), change));
   }
-  put($main, h("h1", {}, "System"), h("p", {class: "lead"}, "Wohnort, Zeit, Bewohner und Ruhezeit."), storageCard,
+  // USB devices
+  const usb = await api("GET", "/usb").catch(() => ({geraete: [], rooms: [], nicht_angesteckt: []}));
+  const usbOut = h("p", {class: "msg"});
+  const usbRows = usb.geraete.map(d => {
+    const sel = h("select", {disabled: !d.zuweisbar}, h("option", {value: ""}, d.zuweisbar ? "– keinem Room –" : "über „Speicher“"),
+      usb.rooms.map(r => h("option", {value: r.id, selected: d.room === r.id}, r.name)));
+    sel.addEventListener("change", async () => {
+      sel.disabled = true;
+      try { await api("PUT", "/usb", {schluessel: d.schluessel, room: sel.value || null}); msg(usbOut, sel.value ? `${d.name} gehört jetzt ${sel.selectedOptions[0].textContent} – der Room startet neu.` : `${d.name} ist keinem Room mehr zugewiesen.`, true); }
+      catch (err) { msg(usbOut, err.message); sel.value = d.room || ""; }
+      sel.disabled = false;
+    });
+    return h("div", {class: "list-row"}, h("div", {style: "flex:1;min-width:0"}, h("b", {}, d.name),
+      h("div", {class: "small muted"}, [d.hersteller, d.art, d.knoten.filter(n => !n.includes("/bus/usb/")).join(", ")].filter(Boolean).join(" · "))), h("div", {style: "width:200px;max-width:45%"}, sel));
+  });
+  const usbCard = h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "USB-Geräte"),
+    h("p", {class: "small muted"}, "Ein Gerät gehört immer genau einem Room – nur er sieht es. Angeboten werden Rooms mit dem Recht „usb“."),
+    usbRows.length ? usbRows : h("p", {class: "small muted"}, "Keine USB-Geräte angesteckt."),
+    usb.nicht_angesteckt.length ? h("p", {class: "small muted"}, `Zugewiesen, aber gerade nicht angesteckt: ${usb.nicht_angesteckt.length}`) : null, usbOut);
+
+  // HTTPS at home
+  const tls = await api("GET", "/https").catch(() => null);
+  let tlsCard = null;
+  if (tls) {
+    const domain = h("input", {value: tls.domain, placeholder: "lares.example.de"});
+    const ip = h("input", {value: tls.ip, placeholder: tls.heim_ip ? `automatisch: ${tls.heim_ip}` : "z. B. 192.168.178.20", inputmode: "decimal"});
+    const email = h("input", {type: "email", value: tls.email, placeholder: "optional, für Hinweise von Let's Encrypt"});
+    const aRec = h("input", {type: "checkbox", checked: tls.a_eintrag});
+    const tlsOut = h("p", {class: "msg"});
+    const steps = h("ol", {class: "rights small"}, tls.schritte.map(x => h("li", {}, x)));
+    const save = h("button", {}, "Speichern");
+    const get = h("button", {class: "primary", disabled: !tls.domain || !tls.schluessel || tls.laeuft}, tls.zertifikat ? "Jetzt erneuern" : "Zertifikat holen");
+    const settings = () => ({domain: domain.value, ip: ip.value, email: email.value, a_eintrag: aRec.checked});
+    save.addEventListener("click", busy(save, async () => { try { await api("PUT", "/https", settings()); msg(tlsOut, "Gespeichert.", true); setTimeout(route, 500); } catch (err) { msg(tlsOut, err.message); } }));
+    get.addEventListener("click", busy(get, async () => {
+      try {
+        await api("PUT", "/https", settings());
+        await api("POST", "/https/holen");
+        for (;;) {
+          await new Promise(r => setTimeout(r, 1500));
+          const st = await api("GET", "/https");
+          put(steps, st.schritte.map(x => h("li", {}, x)));
+          if (!st.laeuft) { if (st.fehler) msg(tlsOut, st.fehler); else { msg(tlsOut, "HTTPS ist aktiv.", true); setTimeout(route, 1200); } break; }
+        }
+      } catch (err) { msg(tlsOut, err.message); }
+    }));
+    const until = tls.zertifikat ? new Date(tls.zertifikat.gueltig_bis * 1000).toLocaleDateString("de-DE") : "";
+    tlsCard = h("div", {class: "card"}, h("div", {class: "row"}, h("h2", {class: "grow", style: "margin:0"}, "HTTPS im Heimnetz"),
+        tls.aktiv ? pill("aktiv", "ok") : tls.zertifikat ? pill("Zertifikat passt nicht", "warn") : pill("aus")),
+      h("p", {class: "small muted"}, "Eine eigene Adresse mit echtem Zertifikat von Let's Encrypt – damit gehen Passkeys auch zu Hause ohne Tailscale. Die Domain muss bei Cloudflare liegen; der Schlüssel ", h("code", {}, "cloudflare_dns_token"), " (API-Token mit „Zone → DNS → Bearbeiten“) kommt unter „Schlüssel“."),
+      !tls.schluessel ? h("p", {class: "msg bad"}, "Schlüssel cloudflare_dns_token fehlt.") : null,
+      tls.aktiv ? h("p", {}, "Erreichbar unter ", h("a", {href: `https://${tls.domain}/`}, `https://${tls.domain}`), ` · gültig bis ${until} · erneuert sich selbst`) : null,
+      h("div", {class: "grid2"}, h("div", {}, field("Adresse", domain)), h("div", {}, field("IP-Adresse im Heimnetz", ip))),
+      h("label", {class: "check"}, aRec, "Adresse bei Cloudflare automatisch auf diese IP zeigen lassen"),
+      field("E-Mail", email),
+      h("p", {class: "small muted"}, "Fritz!Box: unter Heimnetz → Netzwerk → Netzwerkeinstellungen → DNS-Rebind-Schutz die Adresse als Ausnahme eintragen, sonst löst sie im Heimnetz nicht auf."),
+      h("div", {class: "actions"}, save, get), steps, tlsOut, tls.fehler && !tls.laeuft ? h("p", {class: "msg bad"}, tls.fehler) : null);
+  }
+
+  put($main, h("h1", {}, "System"), h("p", {class: "lead"}, "Wohnort, Zeit, Bewohner und Ruhezeit."), storageCard, tlsCard, usbCard,
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Wohnort"), field("Name", pname), h("div", {class: "grid2"}, h("div", {}, field("Breitengrad", lat)), h("div", {}, field("Längengrad", lon))), h("div", {class: "actions"}, here)),
     h("div", {class: "card grid2"}, h("div", {}, field("Zeitzone", tz)), h("div", {}, field("Sprache", lang))),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Bewohner"), h("p", {class: "small muted"}, "Nachrichten gehen an die erste Person mit Handynummer."), people,
@@ -750,9 +809,14 @@ async function pageAccounts() {
       if (!pw) return;
       try { await api("PUT", `/konten/${encodeURIComponent(a.name)}`, {passwort: pw}); msg(out, "Passwort gesetzt, Sitzungen beendet.", true); } catch (err) { msg(out, err.message); }
     }));
+    const kick = a.name === me.name ? null : h("button", {}, "Abmelden");
+    if (kick) kick.addEventListener("click", busy(kick, async () => {
+      if (!confirm(`${a.name} auf allen Geräten abmelden?`)) return;
+      try { await api("DELETE", `/konten/${encodeURIComponent(a.name)}/sitzungen`); msg(out, "Auf allen Geräten abgemeldet.", true); } catch (err) { msg(out, err.message); }
+    }));
     const del = a.name === me.name ? null : h("button", {class: "danger"}, "Löschen");
     if (del) del.addEventListener("click", busy(del, async () => { if (confirm(`${a.name} löschen?`)) { try { await api("DELETE", `/konten/${encodeURIComponent(a.name)}`); route(); } catch (err) { msg(out, err.message); } } }));
-    return h("div", {class: "card"}, h("div", {class: "row"}, h("b", {class: "grow"}, a.name), a.zwei_faktor ? pill("2FA", "ok") : null, role, reset, del), out);
+    return h("div", {class: "card"}, h("div", {class: "row"}, h("b", {class: "grow"}, a.name), a.zwei_faktor ? pill("2FA", "ok") : null, role, reset, kick, del), out);
   });
   const name = h("input"), pw = h("input", {type: "password", autocomplete: "new-password"});
   const role = h("select", {}, h("option", {value: "bewohner"}, "Bewohner"), h("option", {value: "admin"}, "Admin"));
@@ -855,8 +919,30 @@ async function pageMe() {
   }
   renderLook();
 
+  // sessions
+  const sessions = await call("GET", "/atrium/sitzungen");
+  const when = (t) => { const d = new Date(t * 1000), now = Date.now() / 1000;
+    return now - t < 600 ? "gerade eben" : d.toLocaleString("de-DE", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}); };
+  const sessOut = h("p", {class: "msg"});
+  const sessRows = sessions.map(x => {
+    const end = x.aktuell ? null : h("button", {class: "danger"}, "Abmelden");
+    if (end) end.addEventListener("click", busy(end, async () => { await call("DELETE", `/atrium/sitzungen/${x.id}`); route(); }));
+    return h("div", {class: "list-row"}, h("div", {style: "flex:1;min-width:0"},
+      h("b", {}, x.geraet, x.aktuell ? h("span", {class: "pill ok", style: "margin-left:8px"}, "dieses Gerät") : null),
+      h("div", {class: "small muted"}, [x.netz, x.ip, x.methode].filter(Boolean).join(" · ")),
+      h("div", {class: "small muted"}, `angemeldet ${when(x.erstellt)} · zuletzt aktiv ${when(x.zuletzt)}`)), end);
+  });
+  const others = sessions.filter(x => !x.aktuell).length ? h("button", {class: "danger"}, "Alle anderen abmelden") : null;
+  if (others) others.addEventListener("click", busy(others, async () => {
+    if (!confirm("Alle anderen Geräte abmelden?")) return;
+    const r = await call("POST", "/atrium/sitzungen/andere-beenden"); msg(sessOut, `${r.beendet} abgemeldet.`, true); setTimeout(route, 700);
+  }));
+
   put($main, h("h1", {}, me.name), h("p", {class: "lead"}, me.rolle === "admin" ? "Admin" : "Bewohner"),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Darstellung"), lookBox, lookOut),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Angemeldete Geräte"),
+      h("p", {class: "small muted"}, "Meldet sich jemand von einem neuen Gerät an, schickt Lares dir eine Nachricht – mit einem Link, der alle Sitzungen beendet."),
+      sessRows, h("div", {class: "actions"}, others), sessOut),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Passkeys"),
       h("p", {class: "small muted"}, "Anmelden mit Face ID, Touch ID oder der Geräte-PIN – ohne Passwort. Geht nur über die HTTPS-Adresse (Tailscale)."),
       pkList, h("div", {class: "actions"}, pkAdd), PASSKEYS ? null : h("p", {class: "small muted"}, "Auf dieser Adresse nicht möglich – bitte über https öffnen."), pkOut),

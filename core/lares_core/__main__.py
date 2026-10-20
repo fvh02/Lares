@@ -11,6 +11,7 @@ LARES_HOST_DATA   path of the data partition on the host, if the core itself run
 LARES_ROOMS_DIR   folder of the rooms' data (default <data>/rooms; on Lares OS set at boot: stick or disk)
 LARES_OS          1 on Lares OS: the core runs on the host and manages where the rooms live
 LARES_BIND, LARES_HEIM_BIND, LARES_EXTERN_BIND – addresses to listen on (comma-separated, default 0.0.0.0)
+LARES_HEIM_TLS_PORT HTTPS for the home gateway (e.g. 443; default off) – certificate from System → HTTPS
 """
 
 import asyncio
@@ -43,6 +44,9 @@ async def serve() -> None:
                            core_on_host=lares_os)
     core = make_app(data, runtime, core_host=core_host, home_port=home_port, public_port=public_port,
                     rooms_dir=rooms, lares_os=lares_os)
+    tls_port = int(os.environ.get("LARES_HEIM_TLS_PORT", "0"))
+    if tls_port:
+        core["https_port"] = tls_port
     runners = []
     for app, app_port, bind in ((core, port, "LARES_BIND"),
                                 (Gateway(core, public=False).app(), home_port, "LARES_HEIM_BIND"),
@@ -51,6 +55,8 @@ async def serve() -> None:
         await runner.setup()
         for host in os.environ.get(bind, "0.0.0.0").split(","):
             await web.TCPSite(runner, host.strip(), app_port).start()
+            if tls_port and bind == "LARES_HEIM_BIND":
+                await web.TCPSite(runner, host.strip(), tls_port, ssl_context=core["https"].context()).start()
         runners.append(runner)
     log.info("Lares Core läuft: API %s, Heim-Gateway %s, Internet-Gateway %s", port, home_port, public_port)
     stop = asyncio.Event()

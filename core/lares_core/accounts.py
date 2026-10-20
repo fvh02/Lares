@@ -251,7 +251,7 @@ class Accounts:
         return {p: {"email": v["email"], "seit": v["seit"]} for p, v in self.accounts[name].get("verknuepft", {}).items()}
 
     # -- login and sessions -------------------------------------------------------------------------
-    def login(self, name: str, password: str, code: str = "") -> str:
+    def login(self, name: str, password: str, code: str = "", info: dict | None = None) -> str:
         """Returns a session token; raises AccountError ("2fa" when the code is missing)."""
         real = self.find(name)
         account = self.accounts.get(real or "")
@@ -265,12 +265,16 @@ class Accounts:
                 raise AccountError("2fa")
             if not check_totp(account["totp"], code):
                 raise AccountError("Der Code stimmt nicht")
-        return self.new_session(real)
+        return self.new_session(real, {"methode": "Passwort", **(info or {})})
 
-    def new_session(self, name: str) -> str:
+    def new_session(self, name: str, info: dict | None = None) -> str:
+        """info: geraet, ip, netz, methode – shown under „Mein Konto → Sitzungen“."""
         token = secrets.token_urlsafe(32)
         now = int(time.time())
-        self.sessions[_hash(token)] = {"name": name, "erstellt": now, "ablauf": now + SESSION_DAYS * 86400}
+        info = info or {}
+        self.sessions[_hash(token)] = {
+            "name": name, "erstellt": now, "zuletzt": now, "ablauf": now + SESSION_DAYS * 86400,
+            **{k: str(info.get(k) or "")[:120] for k in ("geraet", "ip", "netz", "methode")}}
         self._save_sessions()
         return token
 
@@ -282,14 +286,79 @@ class Accounts:
         now = time.time()
         if entry is None or entry["ablauf"] < now or entry["name"] not in self.accounts:
             return None
-        if entry["ablauf"] - now < (SESSION_DAYS - 1) * 86400:
+        if entry["ablauf"] - now < (SESSION_DAYS - 1) * 86400 or now - entry.get("zuletzt", 0) > 300:
             entry["ablauf"] = int(now) + SESSION_DAYS * 86400
+            entry["zuletzt"] = int(now)
             self._save_sessions()
         return {"name": entry["name"], "rolle": self.accounts[entry["name"]]["rolle"]}
 
     def logout(self, token: str) -> None:
         if self.sessions.pop(_hash(token), None):
             self._save_sessions()
+
+    def list_sessions(self, name: str, current_token: str = "") -> list[dict]:
+        """The sessions of an account, newest first; „id“ is a short public handle, never the token."""
+        current = _hash(current_token) if current_token else ""
+        now = time.time()
+        out = [{"id": key[:16], "geraet": e.get("geraet") or "Unbekanntes Gerät", "ip": e.get("ip", ""),
+                "netz": e.get("netz", ""), "methode": e.get("methode", ""), "erstellt": e["erstellt"],
+                "zuletzt": e.get("zuletzt", e["erstellt"]), "aktuell": key == current}
+               for key, e in self.sessions.items() if e["name"] == name and e["ablauf"] > now]
+        return sorted(out, key=lambda s: (not s["aktuell"], -s["zuletzt"]))
+
+    def end_session(self, name: str, session_id: str) -> bool:
+        key = next((k for k, e in self.sessions.items() if e["name"] == name and k[:16] == session_id), None)
+        if key is None:
+            return False
+        del self.sessions[key]
+        self._save_sessions()
+        return True
+
+    def end_other_sessions(self, name: str, keep_token: str) -> int:
+        keep = _hash(keep_token)
+        before = len(self.sessions)
+        self.sessions = {k: v for k, v in self.sessions.items() if v["name"] != name or k == keep}
+        self._save_sessions()
+        return before - len(self.sessions)
+
+    # -- known devices and "that was not me" --------------------------------------------------------
+    def known_device(self, name: str, device: str) -> bool:
+        return bool(device) and _hash(device) in self.accounts[name].get("geraete", {})
+
+    def remember_device(self, name: str, device: str, label: str) -> None:
+        devices = self.accounts[name].setdefault("geraete", {})
+        devices[_hash(device)] = {"geraet": label[:120], "seit": int(time.time())}
+        if len(devices) > 50:      # keep the newest
+            for key in sorted(devices, key=lambda k: devices[k]["seit"])[:-50]:
+                del devices[key]
+        self._save()
+
+    def has_logged_in_before(self, name: str) -> bool:
+        return bool(self.accounts[name].get("geraete"))
+
+    def block_token(self, name: str) -> str:
+        """A one-time link token: whoever has it can end all sessions of the account (7 days)."""
+        token = secrets.token_urlsafe(24)
+        tokens = self.accounts[name].setdefault("sperren", {})
+        now = int(time.time())
+        for key in [k for k, until in tokens.items() if until < now]:
+            del tokens[key]
+        tokens[_hash(token)] = now + 7 * 86400
+        self._save()
+        return token
+
+    def use_block_token(self, token: str) -> str | None:
+        """Ends all sessions of the account the token belongs to; returns its name."""
+        key, now = _hash(token), time.time()
+        for name, account in self.accounts.items():
+            until = account.get("sperren", {}).pop(key, None)
+            if until is not None:
+                self._save()
+                if until < now:
+                    return None
+                self.end_sessions(name)
+                return name
+        return None
 
     def end_sessions(self, name: str) -> None:
         self.sessions = {k: v for k, v in self.sessions.items() if v["name"] != name}
