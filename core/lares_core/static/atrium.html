@@ -55,7 +55,8 @@ button:disabled{opacity:.5;cursor:default}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
 @media (max-width:560px){.grid2{grid-template-columns:1fr}
-  nav{margin-left:0;width:calc(100% + 32px);margin:0 -16px;padding:0 16px 2px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  #me{order:2;margin-left:auto}
+  nav{order:3;margin-left:0;width:calc(100% + 32px);margin:0 -16px;padding:0 16px 2px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   nav::-webkit-scrollbar{display:none}nav a{white-space:nowrap}}
 .auth{max-width:380px;margin:8vh auto 0}
 .msg{margin:10px 0 0;font-size:14px}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
@@ -63,6 +64,48 @@ pre.log{max-height:320px;overflow:auto;background:var(--bg);border:1px solid var
 details summary{cursor:pointer;color:var(--accent);margin-top:8px}
 ul.rights{margin:8px 0 0;padding-left:20px}
 .empty{padding:32px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--radius)}
+/* avatar and menus */
+.avatar{margin-left:8px;width:36px;height:36px;border-radius:50%;border:0;padding:0;background:var(--accent);color:var(--accent-fg);font-weight:650;font-size:14px;cursor:pointer}
+.menu-wrap{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + 6px);min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:6px;z-index:20}
+.menu[hidden]{display:none}
+.menu .who{padding:8px 10px 10px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.menu .who b{display:block}
+.menu button,.menu a{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:8px;color:var(--fg);text-decoration:none;font-size:15px}
+.menu button:hover,.menu a:hover{background:var(--bg)}
+.menu .danger{color:var(--bad)}
+/* room tiles in the administration */
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.rtile{display:flex;align-items:center;gap:12px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);min-width:0}
+.rtile .ic{width:36px;height:36px;flex:none;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:14px;color:var(--accent-fg);background:var(--accent)}
+.rtile.off .ic{background:var(--line);color:var(--muted)}
+.rtile .txt{flex:1;min-width:0}.rtile .txt b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rtile .txt span{font-size:12px;color:var(--muted)}
+.dots{border:0;background:none;font-size:20px;line-height:1;padding:6px 8px;border-radius:8px;color:var(--muted)}
+.dots:hover{background:var(--bg)}
+.rtile.add{justify-content:center;border-style:dashed;background:none;box-shadow:none;color:var(--accent);cursor:pointer;font:inherit;min-height:62px}
+.rtile.add .plus{font-size:22px;line-height:1}
+/* dialogs */
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--fg);padding:0;width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 48px)}
+dialog::backdrop{background:rgba(20,14,6,.45)}
+dialog .dhead{display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+dialog .dhead b{flex:1;font-size:17px}
+dialog .dbody{padding:16px;overflow:auto;max-height:calc(100vh - 140px)}
+.tabs{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:10px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:none;padding:7px 6px;border-radius:7px;font-size:14px;color:var(--muted)}
+.tabs button.on{background:var(--panel);color:var(--fg);box-shadow:var(--shadow)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.over{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+/* login */
+.alt{display:grid;gap:8px;margin-top:12px}
+.alt button{width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
+.alt .apple{background:#000;color:#fff;border-color:#000}
+@media (prefers-color-scheme:dark){.alt .apple{background:#fff;color:#000;border-color:#fff}}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:16px 0 4px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.banner{background:color-mix(in srgb,var(--bad) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);color:var(--fg);border-radius:12px;padding:10px 14px;margin:0 0 16px}
+.list-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.list-row:last-child{border-bottom:0}
 </style>
 </head>
 <body>
@@ -70,6 +113,7 @@ ul.rights{margin:8px 0 0;padding-left:20px}
   <div class="bar">
     <a class="brand" href="#start"><svg viewBox="0 0 32 32"><path d="M4 14 16 5l12 9v13H4z" fill="var(--accent)"/><path d="M12 27v-8h8v8" fill="var(--bg)"/></svg>Lares</a>
     <nav id="nav"></nav>
+    <div class="menu-wrap" id="me"></div>
   </div>
 </header>
 <main id="main"></main>
@@ -120,25 +164,64 @@ const PAGES = {
   system: {title: "System", render: pageSystem, admin: true},
   fernzugriff: {title: "Fernzugriff", render: pageRemote, admin: true},
   konten: {title: "Konten", render: pageAccounts, admin: true},
-  konto: {title: "Mein Konto", render: pageMe},
+  konto: {title: "Mein Konto", render: pageMe, hidden: true},
 };
+const ERROR = new URLSearchParams(location.search).get("fehler");
+if (ERROR) history.replaceState(null, "", "/" + location.hash);
+let shownError = ERROR;
+
+// one menu open at a time; closes on a click elsewhere or Escape
+let openMenu = null;
+function closeMenu() { if (openMenu) { openMenu.hidden = true; openMenu = null; } }
+document.addEventListener("click", (e) => { if (openMenu && !openMenu.parentElement.contains(e.target)) closeMenu(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+function menu(button, items) {
+  const box = h("div", {class: "menu", hidden: true, role: "menu"}, items.filter(Boolean).map(it =>
+    it.nodeType ? it : h("button", {class: it.danger ? "danger" : "", role: "menuitem",
+      onclick: (e) => { e.stopPropagation(); closeMenu(); it.run(); }}, it.label)));
+  button.setAttribute("aria-haspopup", "menu");
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const was = openMenu === box; closeMenu();
+    if (!was) { box.hidden = false; openMenu = box; }
+  });
+  return h("div", {class: "menu-wrap"}, button, box);
+}
+function dialog(title, ...body) {
+  const d = h("dialog", {}, h("div", {class: "dhead"}, h("b", {}, title), h("button", {class: "dots", "aria-label": "Schließen", onclick: () => d.close()}, "×")),
+    h("div", {class: "dbody"}, body));
+  d.addEventListener("close", () => d.remove());
+  document.body.append(d); d.showModal();
+  return d;
+}
+function errorBanner() {
+  if (!shownError) return null;
+  const text = shownError; shownError = null;
+  return h("div", {class: "banner"}, text);
+}
 async function route() {
   if (!me) {
     const st = await call("GET", "/atrium/zustand");
     me = st.konto;
     if (!st.eingerichtet) return pageSetup();
-    if (!me) return pageLogin();
+    if (!me) return pageLogin(st.anbieter || []);
   }
   let name = location.hash.slice(1) || "start";
   if (!PAGES[name] || (PAGES[name].admin && me.rolle !== "admin")) name = "start";
   document.getElementById("head").hidden = false;
   const nav = document.getElementById("nav");
-  nav.replaceChildren(...Object.entries(PAGES).filter(([, p]) => !p.admin || me.rolle === "admin")
-    .map(([k, p]) => h("a", {href: "#" + k, class: k === name ? "on" : ""}, p.title)),
-    h("a", {href: "#", onclick: async (e) => { e.preventDefault(); await call("POST", "/atrium/abmelden"); me = null; location.hash = ""; route(); }}, "Abmelden"));
+  const entries = Object.entries(PAGES).filter(([, p]) => !p.hidden && (!p.admin || me.rolle === "admin"));
+  nav.replaceChildren(...(entries.length > 1 ? entries.map(([k, p]) => h("a", {href: "#" + k, class: k === name ? "on" : ""}, p.title)) : []));
+  const avatar = h("button", {class: "avatar", title: me.name, "aria-label": "Konto"}, initials(me.name));
+  document.getElementById("me").replaceChildren(menu(avatar, [
+    h("div", {class: "who"}, h("b", {}, me.name), h("span", {class: "small muted"}, me.rolle === "admin" ? "Admin" : "Bewohner")),
+    {label: "Mein Konto", run: () => { location.hash = "konto"; }},
+    {label: "Abmelden", danger: true, run: async () => { await call("POST", "/atrium/abmelden"); me = null; location.hash = ""; route(); }},
+  ]));
   document.title = PAGES[name].title + " · Lares";
   $main.replaceChildren(h("p", {class: "muted"}, "Lädt …"));
-  try { await PAGES[name].render(); }
+  const banner = errorBanner();
+  try { await PAGES[name].render(); if (banner) $main.prepend(banner); }
   catch (err) { $main.replaceChildren(h("div", {class: "card"}, h("p", {class: "msg bad"}, err.message))); }
 }
 window.addEventListener("hashchange", route);
@@ -170,7 +253,28 @@ function pageSetup() {
   code.focus();
 }
 
-function pageLogin() {
+const PASSKEYS = !!(window.PublicKeyCredential && window.isSecureContext);
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+function credentialJSON(c) {
+  const r = c.response, out = {id: c.id, rawId: b64u(c.rawId), type: c.type, response: {clientDataJSON: b64u(r.clientDataJSON)}};
+  if (r.attestationObject) out.response.attestationObject = b64u(r.attestationObject);
+  if (r.authenticatorData) { out.response.authenticatorData = b64u(r.authenticatorData); out.response.signature = b64u(r.signature);
+    if (r.userHandle) out.response.userHandle = b64u(r.userHandle); }
+  return out;
+}
+async function passkeyLogin() {
+  const start = await call("POST", "/atrium/passkey/anmelden/start");
+  const o = start.optionen;
+  const cred = await navigator.credentials.get({publicKey: {challenge: unb64u(o.challenge), rpId: o.rpId, timeout: o.timeout,
+    userVerification: o.userVerification, allowCredentials: []}});
+  await call("POST", "/atrium/passkey/anmelden", {vorgang: start.vorgang, credential: credentialJSON(cred)});
+}
+const APPLE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4.1zM13.9 4.9c.7-.9 1.2-2 1.1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.1.1 2.3-.6 3-1.5z"/></svg>';
+const GOOGLE = '<svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+function iconButton(svg, text, cls) { const b = h("button", {type: "button", class: cls || ""}); b.innerHTML = svg; b.append(text); return b; }
+
+function pageLogin(providers) {
   document.getElementById("head").hidden = true;
   const name = h("input", {autocomplete: "username"});
   const pw = h("input", {type: "password", autocomplete: "current-password"});
@@ -187,8 +291,22 @@ function pageLogin() {
       else msg(out, err.message);
     }
   }));
-  $main.replaceChildren(h("div", {class: "auth"}, h("h1", {}, "Lares"), h("p", {class: "lead"}, "Bitte anmelden."), form));
-  name.focus();
+  const alt = h("div", {class: "alt"});
+  if (PASSKEYS) {
+    const pk = h("button", {type: "button", class: "primary"}, "Mit Passkey anmelden");
+    pk.addEventListener("click", busy(pk, async () => {
+      try { await passkeyLogin(); afterLogin(); }
+      catch (err) { msg(out, err.name === "NotAllowedError" ? "Abgebrochen." : err.message); }
+    }));
+    alt.append(pk);
+  }
+  if (providers.includes("apple")) alt.append(iconButton(APPLE, "Mit Apple anmelden", "apple"));
+  if (providers.includes("google")) alt.append(iconButton(GOOGLE, "Mit Google anmelden"));
+  for (const b of alt.querySelectorAll("button.apple, button:not(.primary):not(.apple)"))
+    b.addEventListener("click", () => { location.href = "/atrium/anmelden/" + (b.classList.contains("apple") ? "apple" : "google"); });
+  $main.replaceChildren(h("div", {class: "auth"}, h("h1", {}, "Lares"), h("p", {class: "lead"}, "Bitte anmelden."),
+    errorBanner(), alt.children.length ? [alt, h("div", {class: "or"}, "oder mit Passwort")] : null, form));
+  if (!alt.children.length) name.focus();
 }
 
 // -- start ----------------------------------------------------------------------------------------
@@ -205,61 +323,29 @@ async function pageStart() {
 // -- rooms ----------------------------------------------------------------------------------------
 async function pageRooms() {
   const rooms = await api("GET", "/rooms");
-  const list = rooms.map(roomCard);
-  const yaml = h("textarea", {placeholder: "id: …\nname: …\nversion: 1.0.0\n…", spellcheck: "false"});
-  const out = h("div", {class: "msg"});
-  const btn = h("button", {class: "primary"}, "Prüfen und installieren");
-  btn.addEventListener("click", busy(btn, async () => install(yaml.value, false, out)));
-  $main.replaceChildren(h("h1", {}, "Rooms"), h("p", {class: "lead"}, "Installierte Rooms, ihre Einstellungen und Freigaben."),
-    list.length ? h("div", {}, list) : h("div", {class: "empty"}, "Noch keine Rooms installiert."),
-    h("h2", {}, "Room installieren"), h("div", {class: "card"}, h("p", {class: "small muted", style: "margin-top:0"},
-      "Den Inhalt der room.yaml einfügen. Der Room Store folgt."), yaml, h("div", {class: "actions"}, btn), out));
+  const add = h("button", {class: "rtile add", onclick: addRoomDialog}, h("span", {class: "plus"}, "+"), "Room hinzufügen");
+  $main.replaceChildren(h("h1", {}, "Rooms"), h("p", {class: "lead"}, "Installierte Rooms – über ⋯ steuern."),
+    h("div", {class: "rgrid"}, rooms.map(roomTile), add));
 }
 
-async function install(text, confirmed, out) {
-  try {
-    const res = await api("POST", "/rooms", {room_yaml: text, rechte_bestaetigt: confirmed});
-    out.replaceChildren(h("p", {class: "msg ok"}, `${res.name} ${res.version} ist installiert.`));
-    setTimeout(route, 800);
-  } catch (err) {
-    if (err.status === 409 && err.data && err.data.bestaetigen) {
-      const ok = h("button", {class: "primary"}, "Erlauben und installieren");
-      ok.addEventListener("click", busy(ok, () => install(text, true, out)));
-      out.className = "msg";
-      out.replaceChildren(h("div", {class: "card"}, h("b", {}, `${err.data.room} möchte:`),
-        err.data.rechte.length ? h("ul", {class: "rights"}, err.data.rechte.map(r => h("li", {}, r))) : h("p", {}, "keine besonderen Rechte"),
-        h("div", {class: "actions"}, ok)));
-    } else { out.replaceChildren(h("p", {class: "msg bad"}, err.message)); }
-  }
+function roomTile(r) {
+  const state = r.verbunden ? ["verbunden", "ok"] : r.aktiv ? [r.container === "running" ? "läuft" : r.container, "warn"] : ["aus", ""];
+  const dots = h("button", {class: "dots", "aria-label": `${r.name} steuern`}, "⋯");
+  return h("div", {class: "rtile" + (r.aktiv ? "" : " off")}, h("span", {class: "ic"}, initials(r.name)),
+    h("div", {class: "txt"}, h("b", {}, r.name), h("span", {}, `${r.version} · `, pill(state[0], state[1]), r.freigabe ? [" ", pill("Internet", "warn")] : null)),
+    menu(dots, [
+      {label: "Einstellungen", run: () => roomSettings(r)},
+      {label: "Rechte", run: () => dialog(`${r.name} – Rechte`, r.rechte.length ? h("ul", {class: "rights"}, r.rechte.map(x => h("li", {}, x))) : h("p", {class: "muted"}, "Keine besonderen Rechte."))},
+      {label: "Log", run: async () => dialog(`${r.name} – Log`, h("pre", {class: "log"}, (await call("GET", `/api/v1/admin/rooms/${r.id}/logs`)) || "(leer)"))},
+      r.oeffentlich ? {label: r.freigabe ? "Internet-Freigabe ändern" : "Im Internet freigeben", run: () => roomRelease(r)} : null,
+      {label: r.aktiv ? "Ausschalten" : "Einschalten", run: async () => { await api("POST", `/rooms/${r.id}/${r.aktiv ? "stop" : "start"}`); route(); }},
+      {label: "Entfernen", danger: true, run: async () => { if (confirm(`${r.name} entfernen? Die Daten bleiben erhalten.`)) { await api("DELETE", `/rooms/${r.id}`); route(); } }},
+    ]));
 }
 
-function roomCard(r) {
-  const state = r.verbunden ? pill("verbunden", "ok") : r.aktiv ? pill(r.container === "running" ? "läuft" : r.container, "warn") : pill("aus");
-  const body = h("div");
-  const toggle = h("button", {}, r.aktiv ? "Ausschalten" : "Einschalten");
-  toggle.addEventListener("click", busy(toggle, async () => { await api("POST", `/rooms/${r.id}/${r.aktiv ? "stop" : "start"}`); route(); }));
-  const settings = h("button", {}, "Einstellungen");
-  settings.addEventListener("click", busy(settings, () => roomSettings(r, body)));
-  const logs = h("button", {}, "Log");
-  logs.addEventListener("click", busy(logs, async () => body.replaceChildren(h("pre", {class: "log"}, (await call("GET", `/api/v1/admin/rooms/${r.id}/logs`)) || "(leer)"))));
-  const release = r.oeffentlich ? h("button", {}, "Internet") : null;
-  if (release) release.addEventListener("click", () => roomRelease(r, body));
-  const remove = h("button", {class: "danger"}, "Entfernen");
-  remove.addEventListener("click", busy(remove, async () => {
-    if (!confirm(`${r.name} entfernen? Die Daten bleiben erhalten.`)) return;
-    await api("DELETE", `/rooms/${r.id}`); route();
-  }));
-  return h("div", {class: "card"},
-    h("div", {class: "row"}, h("div", {class: "grow"}, h("b", {}, r.name), " ", h("span", {class: "muted small"}, r.version)), state,
-      r.freigabe ? pill("im Internet", "warn") : null),
-    r.beschreibung ? h("p", {class: "small muted", style: "margin:4px 0 0"}, r.beschreibung) : null,
-    r.rechte.length ? h("details", {}, h("summary", {class: "small"}, "Rechte"), h("ul", {class: "rights small"}, r.rechte.map(x => h("li", {}, x)))) : null,
-    h("div", {class: "actions"}, toggle, settings, logs, release, remove), body);
-}
-
-async function roomSettings(r, box) {
+async function roomSettings(r) {
   const data = await api("GET", `/rooms/${r.id}/einstellungen`);
-  if (!data.formular.length) { box.replaceChildren(h("p", {class: "small muted"}, "Dieser Room hat keine Einstellungen.")); return; }
+  if (!data.formular.length) return dialog(`${r.name} – Einstellungen`, h("p", {class: "muted"}, "Dieser Room hat keine Einstellungen."));
   const inputs = {};
   const fields = data.formular.map(f => {
     const v = data.werte[f.name];
@@ -270,29 +356,100 @@ async function roomSettings(r, box) {
   });
   const out = h("p", {class: "msg"});
   const save = h("button", {class: "primary"}, "Speichern");
+  const d = dialog(`${r.name} – Einstellungen`, fields, h("div", {class: "actions"}, save), out);
   save.addEventListener("click", busy(save, async () => {
     const values = {};
     for (const f of data.formular) values[f.name] = f.typ === "bool" ? inputs[f.name].checked : inputs[f.name].value;
-    try { await api("PUT", `/rooms/${r.id}/einstellungen`, values); msg(out, "Gespeichert.", true); } catch (err) { msg(out, err.message); }
+    try { await api("PUT", `/rooms/${r.id}/einstellungen`, values); d.close(); } catch (err) { msg(out, err.message); }
   }));
-  box.replaceChildren(h("div", {style: "margin-top:12px"}, fields, h("div", {class: "actions"}, save), out));
 }
 
-function roomRelease(r, box) {
+function roomRelease(r) {
   const host = h("input", {placeholder: "spiele.example.de", value: (r.freigabe && r.freigabe.host) || ""});
   const code = h("input", {type: "password", autocomplete: "new-password", placeholder: r.freigabe && r.freigabe.zugangscode ? "(gesetzt – leer lassen zum Behalten)" : "optional, mindestens 8 Zeichen"});
   const out = h("p", {class: "msg"});
   const save = h("button", {class: "primary"}, r.freigabe ? "Speichern" : "Freigeben");
+  const withdraw = r.freigabe ? h("button", {class: "danger"}, "Freigabe zurückziehen") : null;
+  const d = dialog(`${r.name} im Internet`,
+    h("p", {class: "small muted", style: "margin-top:0"}, "Über Cloudflare Tunnel erreichbar. Im Tunnel die Adresse auf http://lares-core:8001 zeigen lassen."),
+    field("Eigene Adresse", host), field("Zugangscode", code), h("div", {class: "actions"}, save, withdraw), out);
   save.addEventListener("click", busy(save, async () => {
     const body = {host: host.value};
     if (code.value) body.zugangscode = code.value;
-    try { await api("PUT", `/rooms/${r.id}/freigabe`, body); msg(out, "Gespeichert.", true); setTimeout(route, 600); } catch (err) { msg(out, err.message); }
+    try { await api("PUT", `/rooms/${r.id}/freigabe`, body); d.close(); route(); } catch (err) { msg(out, err.message); }
   }));
-  const withdraw = r.freigabe ? h("button", {class: "danger"}, "Freigabe zurückziehen") : null;
-  if (withdraw) withdraw.addEventListener("click", busy(withdraw, async () => { await api("DELETE", `/rooms/${r.id}/freigabe`); route(); }));
-  box.replaceChildren(h("div", {style: "margin-top:12px"},
-    h("p", {class: "small muted"}, "Über Cloudflare Tunnel aus dem Internet erreichbar. Im Tunnel die Adresse auf http://lares-core:8001 zeigen lassen."),
-    field("Eigene Adresse", host), field("Zugangscode", code), h("div", {class: "actions"}, save, withdraw), out));
+  if (withdraw) withdraw.addEventListener("click", busy(withdraw, async () => { await api("DELETE", `/rooms/${r.id}/freigabe`); d.close(); route(); }));
+}
+
+// "+": a room from a file, pasted text, a link or GitHub
+function addRoomDialog() {
+  const out = h("div", {class: "msg"});
+  const body = h("div");
+  const tabs = h("div", {class: "tabs", role: "tablist"});
+  const send = async (payload, btn) => {
+    btn.disabled = true;
+    try { await installRoom(payload, false, out, d); } finally { btn.disabled = false; }
+  };
+  const views = {
+    datei: () => {
+      const input = h("input", {type: "file", accept: ".yaml,.yml,text/yaml,text/plain", hidden: true});
+      const zone = h("div", {class: "drop", tabindex: "0", role: "button"}, h("b", {}, "room.yaml hierher ziehen"), h("br"), h("span", {class: "small"}, "oder tippen, um eine Datei zu wählen"));
+      const read = async (file) => { if (!file) return; if (file.size > 262144) return msg(out, "Datei zu groß für eine room.yaml"); await installRoom({room_yaml: await file.text()}, false, out, d); };
+      zone.addEventListener("click", () => input.click());
+      zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") input.click(); });
+      zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("over"); });
+      zone.addEventListener("dragleave", () => zone.classList.remove("over"));
+      zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("over"); read(e.dataTransfer.files[0]); });
+      input.addEventListener("change", () => read(input.files[0]));
+      return [zone, input];
+    },
+    text: () => {
+      const yaml = h("textarea", {placeholder: "id: …\nname: …\nversion: 1.0.0\n…", spellcheck: "false"});
+      const btn = h("button", {class: "primary"}, "Prüfen");
+      btn.addEventListener("click", () => send({room_yaml: yaml.value}, btn));
+      return [yaml, h("div", {class: "actions"}, btn)];
+    },
+    link: () => {
+      const url = h("input", {type: "url", placeholder: "https://example.com/room.yaml"});
+      const btn = h("button", {class: "primary"}, "Laden und prüfen");
+      btn.addEventListener("click", () => send({url: url.value}, btn));
+      return [field("Link zu einer room.yaml", url), h("div", {class: "actions"}, btn)];
+    },
+    github: () => {
+      const url = h("input", {type: "url", placeholder: "https://github.com/name/repo"});
+      const btn = h("button", {class: "primary"}, "Laden und prüfen");
+      btn.addEventListener("click", () => {
+        if (!/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(url.value.trim())) return msg(out, "Bitte einen Link wie https://github.com/name/repo");
+        send({url: url.value}, btn);
+      });
+      return [field("GitHub-Link", url), h("p", {class: "small muted"}, "Repository, Ordner oder Datei – Lares sucht die room.yaml selbst."), h("div", {class: "actions"}, btn)];
+    },
+  };
+  const names = {datei: "Datei", text: "Einfügen", link: "Link", github: "GitHub"};
+  const show = (k) => {
+    for (const b of tabs.children) b.className = b.dataset.k === k ? "on" : "";
+    body.replaceChildren(...[views[k]()].flat()); msg(out, "");
+  };
+  for (const k of Object.keys(views)) tabs.append(h("button", {"data-k": k, role: "tab", onclick: () => show(k)}, names[k]));
+  const d = dialog("Room hinzufügen", tabs, body, out);
+  show("datei");
+}
+
+async function installRoom(payload, confirmed, out, d) {
+  try {
+    const res = await api("POST", "/rooms", {...payload, rechte_bestaetigt: confirmed});
+    d.close(); route();
+    return res;
+  } catch (err) {
+    if (err.status === 409 && err.data && err.data.bestaetigen) {
+      const ok = h("button", {class: "primary"}, "Erlauben und installieren");
+      ok.addEventListener("click", busy(ok, () => installRoom({room_yaml: err.data.room_yaml}, true, out, d)));
+      out.className = "msg";
+      out.replaceChildren(h("div", {class: "card", style: "margin-top:14px"}, h("b", {}, `${err.data.name} ${err.data.version} möchte:`),
+        err.data.rechte.length ? h("ul", {class: "rights"}, err.data.rechte.map(r => h("li", {}, r))) : h("p", {}, "keine besonderen Rechte"),
+        h("div", {class: "actions"}, ok)));
+    } else { out.className = "msg bad"; out.replaceChildren(err.message); }
+  }
 }
 
 // -- keys -----------------------------------------------------------------------------------------
@@ -428,9 +585,15 @@ async function pageAccounts() {
   const out = h("p", {class: "msg"});
   const add = h("button", {class: "primary"}, "Anlegen");
   add.addEventListener("click", busy(add, async () => { try { await api("POST", "/konten", {name: name.value, passwort: pw.value, rolle: role.value}); route(); } catch (err) { msg(out, err.message); } }));
+  const providers = await api("GET", "/anmeldung");
+  const providerCard = h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Anmeldung mit Apple und Google"),
+    h("p", {class: "small muted"}, "Die Schlüssel kommen unter „Schlüssel“ in den Tresor. Als Rücksprung-Adresse beim Anbieter eintragen (nur HTTPS):"),
+    Object.entries(providers).map(([p, c]) => h("div", {class: "list-row"}, h("div", {style: "flex:1;min-width:0"}, h("b", {}, c.name),
+      h("div", {class: "small muted", style: "word-break:break-all"}, `${location.origin.replace(/^http:/, "https:")}/atrium/anmelden/${p}/zurueck`),
+      c.fehlt.length ? h("div", {class: "small muted"}, "Fehlt: " + c.fehlt.join(", ")) : null), c.eingerichtet ? pill("eingerichtet", "ok") : pill("fehlt", "warn"))));
   $main.replaceChildren(h("h1", {}, "Konten"), h("p", {class: "lead"}, "Admins verwalten das System, Bewohner öffnen die Rooms."), h("div", {}, rows),
     h("h2", {}, "Neues Konto"), h("div", {class: "card"}, h("div", {class: "grid2"}, h("div", {}, field("Name", name)), h("div", {}, field("Passwort", pw))),
-      field("Rolle", role), h("div", {class: "actions"}, add), out));
+      field("Rolle", role), h("div", {class: "actions"}, add), out), providerCard);
 }
 
 // -- my account -----------------------------------------------------------------------------------
@@ -461,7 +624,49 @@ async function pageMe() {
     }));
     tfBox.append(h("p", {class: "small muted"}, "Beim Anmelden wird zusätzlich ein Code aus der App abgefragt."), h("div", {class: "actions"}, start));
   }
+  // passkeys
+  const keys = await call("GET", "/atrium/passkeys");
+  const pkOut = h("p", {class: "msg"});
+  const pkList = h("div", {}, keys.length ? keys.map(k => {
+    const del = h("button", {class: "danger"}, "Entfernen");
+    del.addEventListener("click", busy(del, async () => { if (confirm(`Passkey „${k.name}“ entfernen?`)) { await call("DELETE", `/atrium/passkeys/${encodeURIComponent(k.id)}`); route(); } }));
+    return h("div", {class: "list-row"}, h("div", {class: "grow", style: "flex:1"}, h("b", {}, k.name), h("div", {class: "small muted"},
+      "angelegt " + new Date(k.erstellt * 1000).toLocaleDateString("de-DE") + (k.zuletzt ? " · zuletzt " + new Date(k.zuletzt * 1000).toLocaleDateString("de-DE") : ""))), del);
+  }) : h("p", {class: "small muted"}, "Noch keine Passkeys."));
+  const pkAdd = h("button", {class: "primary", disabled: !PASSKEYS}, "Passkey hinzufügen");
+  pkAdd.addEventListener("click", busy(pkAdd, async () => {
+    try {
+      const start = await call("POST", "/atrium/passkey/neu/start");
+      const o = start.optionen;
+      const cred = await navigator.credentials.create({publicKey: {...o, challenge: unb64u(o.challenge),
+        user: {...o.user, id: unb64u(o.user.id)}, excludeCredentials: o.excludeCredentials.map(c => ({...c, id: unb64u(c.id)}))}});
+      const label = /iPhone|iPad/.test(navigator.userAgent) ? "iPhone" : /Mac/.test(navigator.userAgent) ? "Mac" : /Android/.test(navigator.userAgent) ? "Android" : "Passkey";
+      await call("POST", "/atrium/passkey/neu", {vorgang: start.vorgang, credential: credentialJSON(cred), name: label});
+      route();
+    } catch (err) { msg(pkOut, err.name === "NotAllowedError" ? "Abgebrochen." : err.name === "InvalidStateError" ? "Dieses Gerät hat schon einen Passkey für Lares." : err.message); }
+  }));
+
+  // Apple and Google
+  const links = await call("GET", "/atrium/verknuepfungen");
+  const linkRows = Object.entries(links).map(([p, l]) => {
+    let action;
+    if (l.verbunden) {
+      action = h("button", {class: "danger"}, "Trennen");
+      action.addEventListener("click", busy(action, async () => { await call("DELETE", `/atrium/verknuepfungen/${p}`); route(); }));
+    } else {
+      action = h("button", {disabled: !l.eingerichtet}, "Verbinden");
+      action.addEventListener("click", () => { location.href = `/atrium/anmelden/${p}?modus=verbinden`; });
+    }
+    return h("div", {class: "list-row"}, h("div", {style: "flex:1"}, h("b", {}, l.name),
+      h("div", {class: "small muted"}, l.verbunden ? (l.verbunden.email || "verbunden") : l.eingerichtet ? "nicht verbunden" : "vom Admin noch nicht eingerichtet")), action);
+  });
+
   $main.replaceChildren(h("h1", {}, me.name), h("p", {class: "lead"}, me.rolle === "admin" ? "Admin" : "Bewohner"),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Passkeys"),
+      h("p", {class: "small muted"}, "Anmelden mit Face ID, Touch ID oder der Geräte-PIN – ohne Passwort. Geht nur über die HTTPS-Adresse (Tailscale)."),
+      pkList, h("div", {class: "actions"}, pkAdd), PASSKEYS ? null : h("p", {class: "small muted"}, "Auf dieser Adresse nicht möglich – bitte über https öffnen."), pkOut),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Apple und Google"),
+      h("p", {class: "small muted"}, "Verbundene Konten können sich ohne Passwort anmelden."), linkRows),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Passwort"), field("Bisheriges Passwort", old), field("Neues Passwort", neu), h("div", {class: "actions"}, pwSave), pwOut),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Zwei-Faktor-Anmeldung"), tfBox, tfOut));
 }
