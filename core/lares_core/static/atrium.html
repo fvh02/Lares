@@ -3,8 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#17140f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f1e7" id="theme-color">
+<script>
+// design and mode before the first paint (no flash): the account's choice, remembered on this device
+(() => {
+  let a = {design: "klassisch", modus: "auto"};
+  try { a = {...a, ...JSON.parse(localStorage.getItem("lares-darstellung") || "{}")}; } catch {}
+  const dark = a.modus === "dunkel" || (a.modus === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.design = a.design;
+  document.documentElement.dataset.dark = dark ? "1" : "0";
+})();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Lares Atrium</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 14 16 5l12 9v13H4z' fill='%23a0522d'/%3E%3Cpath d='M12 27v-8h8v8' fill='%23f6f1e7'/%3E%3C/svg%3E">
@@ -14,10 +23,50 @@
   --ok:#2e7d4f;--warn:#b7791f;--bad:#b3261e;--shadow:0 1px 2px rgba(60,40,10,.06),0 4px 16px rgba(60,40,10,.06);
   --radius:14px;
 }
-@media (prefers-color-scheme:dark){:root{
+:root[data-dark="1"]{
   --bg:#17140f;--panel:#211d17;--fg:#efe7da;--muted:#a89d8b;--line:#3a3328;--accent:#d98b5f;--accent-fg:#1b130c;
-  --ok:#6cc08b;--warn:#e0b252;--bad:#ef7b72;--shadow:none;
-}}
+  --ok:#6cc08b;--warn:#e0b252;--bad:#ef7b72;--shadow:none;color-scheme:dark;
+}
+/* design "Himmel": the weather behind frosted glass */
+:root[data-design="himmel"]{
+  --bg:transparent;--panel:rgba(255,255,255,.56);--line:rgba(255,255,255,.6);--field:rgba(255,255,255,.5);
+  --glass:blur(22px) saturate(170%);--shadow:0 8px 30px rgba(18,30,60,.14);--muted:#4f4a42;
+}
+:root[data-design="himmel"][data-dark="1"]{
+  --panel:rgba(18,20,28,.5);--line:rgba(255,255,255,.12);--field:rgba(0,0,0,.25);--shadow:0 8px 30px rgba(0,0,0,.3);
+  --muted:#b9b1a3;
+}
+:root[data-design="himmel"]{background:#6f8fb8}
+:root[data-design="himmel"][data-dark="1"]{background:#10131c}
+#sky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;display:block}
+[data-design="himmel"] body{background:transparent}
+[data-design="himmel"] header{background:rgba(255,255,255,.3);border-bottom-color:rgba(255,255,255,.35)}
+[data-design="himmel"][data-dark="1"] header{background:rgba(14,16,24,.38);border-bottom-color:rgba(255,255,255,.08)}
+[data-design="himmel"] :is(header,.card,.tile,.rtile,.menu,dialog,.tabs,.banner,.empty,.weather){-webkit-backdrop-filter:var(--glass);backdrop-filter:var(--glass)}
+[data-design="himmel"] :is(input,select,textarea){background:var(--field)}
+[data-design="himmel"] .empty{background:var(--panel)}
+/* menus sit inside glass tiles, where the blur cannot reach the neighbours: almost solid glass instead */
+[data-design="himmel"] .menu{background:rgba(255,255,255,.97)}
+[data-design="himmel"][data-dark="1"] .menu{background:rgba(26,28,36,.97)}
+[data-design="himmel"] nav a.on{background:var(--panel)}
+[data-design="himmel"] dialog::backdrop{background:rgba(10,14,24,.25);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+/* text that stands right on the sky follows its brightness */
+[data-design="himmel"][data-sky="dunkel"]:not([data-dark="1"]) :is(main>h1,main>h2,main>p.lead,.auth>h1,.auth>p.lead,.or,header .brand,header nav a:not(.on)){color:#f6f2ea;text-shadow:0 1px 8px rgba(0,0,0,.35)}
+[data-design="himmel"][data-dark="1"] :is(main>h1,main>p.lead,.auth>h1){text-shadow:0 1px 10px rgba(0,0,0,.45)}
+.weather{position:fixed;left:16px;bottom:16px;z-index:4;font-size:13px;padding:6px 12px;border-radius:99px;background:var(--panel);border:1px solid var(--line);color:var(--fg)}
+.weather[hidden]{display:none}
+/* design picker */
+.designs{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.design{border:2px solid var(--line);border-radius:14px;padding:0;overflow:hidden;background:var(--panel);text-align:left;cursor:pointer}
+.design.on{border-color:var(--accent)}
+.design .pv{height:92px;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px}
+.design .pv i{border-radius:8px;display:block}
+.design b{display:block;padding:8px 12px 10px;font-weight:600;font-size:14px}
+.pv.klassisch{background:#f6f1e7}.pv.klassisch i{background:#fffdf8;border:1px solid #e2d8c6}
+.pv.himmel{background:linear-gradient(#3f80d4,#f3d6b8)}.pv.himmel i{background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.7)}
+.seg{display:inline-flex;gap:4px;background:var(--bg);padding:4px;border-radius:10px;border:1px solid var(--line)}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:7px;font-size:14px;color:var(--muted)}
+.seg button.on{background:var(--panel);color:var(--fg);box-shadow:var(--shadow)}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 a{color:var(--accent)}
@@ -76,11 +125,13 @@ ul.rights{margin:8px 0 0;padding-left:20px}
 .menu .danger{color:var(--bad)}
 /* room tiles in the administration */
 .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
-.rtile{display:flex;align-items:center;gap:12px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);min-width:0}
+.rtile{position:relative;display:flex;align-items:center;gap:12px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);min-width:0}
 .rtile .ic{width:36px;height:36px;flex:none;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:14px;color:var(--accent-fg);background:var(--accent)}
 .rtile.off .ic{background:var(--line);color:var(--muted)}
 .rtile .txt{flex:1;min-width:0}.rtile .txt b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rtile .txt span{font-size:12px;color:var(--muted)}
+/* an open menu lifts its tile above the neighbours (glass gives every tile its own layer) */
+.rtile:has(>.menu-wrap>.menu:not([hidden])){z-index:30}
 .dots{border:0;background:none;font-size:20px;line-height:1;padding:6px 8px;border-radius:8px;color:var(--muted)}
 .dots:hover{background:var(--bg)}
 .rtile.add{justify-content:center;border-style:dashed;background:none;box-shadow:none;color:var(--accent);cursor:pointer;font:inherit;min-height:62px}
@@ -100,7 +151,7 @@ dialog .dbody{padding:16px;overflow:auto;max-height:calc(100vh - 140px)}
 .alt{display:grid;gap:8px;margin-top:12px}
 .alt button{width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
 .alt .apple{background:#000;color:#fff;border-color:#000}
-@media (prefers-color-scheme:dark){.alt .apple{background:#fff;color:#000;border-color:#fff}}
+[data-dark="1"] .alt .apple{background:#fff;color:#000;border-color:#fff}
 .or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:16px 0 4px}
 .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 .banner{background:color-mix(in srgb,var(--bad) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);color:var(--fg);border-radius:12px;padding:10px 14px;margin:0 0 16px}
@@ -117,6 +168,8 @@ dialog .dbody{padding:16px;overflow:auto;max-height:calc(100vh - 140px)}
   </div>
 </header>
 <main id="main"></main>
+<div class="weather" id="weather" hidden></div>
+<script src="/atrium/static/sky.js"></script>
 <script>
 "use strict";
 const $main = document.getElementById("main");
@@ -166,6 +219,30 @@ const PAGES = {
   konten: {title: "Konten", render: pageAccounts, admin: true},
   konto: {title: "Mein Konto", render: pageMe, hidden: true},
 };
+// -- appearance: design and light/dark --------------------------------------------------------------
+let look = {design: "klassisch", modus: "auto"};
+try { look = {...look, ...JSON.parse(localStorage.getItem("lares-darstellung") || "{}")}; } catch {}
+const darkMedia = matchMedia("(prefers-color-scheme: dark)");
+function applyLook(next) {
+  look = {...look, ...(next || {})};
+  try { localStorage.setItem("lares-darstellung", JSON.stringify(look)); } catch {}
+  const root = document.documentElement;
+  const dark = look.modus === "dunkel" || (look.modus === "auto" && darkMedia.matches);
+  root.dataset.design = look.design;
+  root.dataset.dark = dark ? "1" : "0";
+  document.getElementById("theme-color").content = dark ? "#17140f" : look.design === "himmel" ? "#6f8fb8" : "#f6f1e7";
+  if (look.design === "himmel") window.LaresSky.on(); else { window.LaresSky.off(); document.getElementById("weather").hidden = true; }
+  window.LaresSky.redraw();
+}
+darkMedia.addEventListener("change", () => applyLook());
+document.addEventListener("lares-wetter", (e) => {
+  const w = e.detail, box = document.getElementById("weather");
+  if (look.design !== "himmel" || !w.text) return;
+  box.textContent = `${w.temperatur != null ? Math.round(w.temperatur) + "° · " : ""}${w.text}${w.quelle === "wohnort" ? " · Zuhause" : ""}`;
+  box.hidden = false;
+});
+applyLook();
+
 const ERROR = new URLSearchParams(location.search).get("fehler");
 if (ERROR) history.replaceState(null, "", "/" + location.hash);
 let shownError = ERROR;
@@ -203,6 +280,7 @@ async function route() {
   if (!me) {
     const st = await call("GET", "/atrium/zustand");
     me = st.konto;
+    if (st.darstellung) applyLook(st.darstellung);
     if (!st.eingerichtet) return pageSetup();
     if (!me) return pageLogin(st.anbieter || []);
   }
@@ -661,7 +739,28 @@ async function pageMe() {
       h("div", {class: "small muted"}, l.verbunden ? (l.verbunden.email || "verbunden") : l.eingerichtet ? "nicht verbunden" : "vom Admin noch nicht eingerichtet")), action);
   });
 
+  // appearance
+  const lookOut = h("p", {class: "msg"});
+  const saveLook = async (change) => {
+    applyLook(change);
+    try { await call("PUT", "/atrium/darstellung", change); msg(lookOut, ""); } catch (err) { msg(lookOut, err.message); }
+    renderLook();
+  };
+  const lookBox = h("div");
+  const DESIGNS = [["klassisch", "Klassisch", "Warm und ruhig, wie bisher."], ["himmel", "Himmel", "Das Wetter an deinem Ort im Hintergrund, Milchglas davor – mit Sonnenauf- und -untergang zur echten Zeit."]];
+  function renderLook() {
+    lookBox.replaceChildren(
+      h("div", {class: "designs"}, DESIGNS.map(([id, name, text]) => h("button", {class: "design" + (look.design === id ? " on" : ""), "aria-pressed": look.design === id ? "true" : "false",
+        onclick: () => saveLook({design: id})}, h("div", {class: "pv " + id}, h("i"), h("i"), h("i"), h("i")), h("b", {}, name),
+        h("span", {class: "small muted", style: "display:block;padding:0 12px 12px;margin-top:-6px"}, text)))),
+      h("label", {}, "Hell oder dunkel"),
+      h("div", {class: "seg"}, [["auto", "Automatisch"], ["hell", "Hell"], ["dunkel", "Dunkel"]].map(([id, name]) =>
+        h("button", {class: look.modus === id ? "on" : "", onclick: () => saveLook({modus: id})}, name))));
+  }
+  renderLook();
+
   $main.replaceChildren(h("h1", {}, me.name), h("p", {class: "lead"}, me.rolle === "admin" ? "Admin" : "Bewohner"),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Darstellung"), lookBox, lookOut),
     h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Passkeys"),
       h("p", {class: "small muted"}, "Anmelden mit Face ID, Touch ID oder der Geräte-PIN – ohne Passwort. Geht nur über die HTTPS-Adresse (Tailscale)."),
       pkList, h("div", {class: "actions"}, pkAdd), PASSKEYS ? null : h("p", {class: "small muted"}, "Auf dieser Adresse nicht möglich – bitte über https öffnen."), pkOut),

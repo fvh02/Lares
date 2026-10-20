@@ -16,13 +16,15 @@ from . import api
 from .accounts import AccountError, Accounts
 from .oidc import OIDC, PROVIDERS, OIDCError, configured
 from .notify import RateLimit
+from .weather import Weather, WeatherError
 from .webauthn import WebAuthnError, b64url, verify_assertion, verify_registration
 
 log = logging.getLogger("lares.atrium")
 COOKIE = "lares_sitzung"
 STATIC = Path(__file__).parent / "static"
 SAFE = ("GET", "HEAD", "OPTIONS")
-OPEN = ("/atrium/zustand", "/atrium/anmelden", "/atrium/einrichten", "/atrium/passkey/anmelden")
+OPEN = ("/atrium/zustand", "/atrium/anmelden", "/atrium/einrichten", "/atrium/passkey/anmelden", "/atrium/wetter",
+        "/atrium/static/")
 CROSS_SITE = ("/atrium/anmelden/apple/zurueck",)      # Apple answers with a form POST from appleid.apple.com
 CHALLENGE_SECONDS = 300
 
@@ -84,7 +86,7 @@ async def body(request: web.Request) -> dict:
 async def index(request: web.Request) -> web.Response:
     return web.FileResponse(STATIC / "atrium.html", headers={
         "Cache-Control": "no-cache", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
-        "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; "
                                    "img-src 'self' data:; frame-ancestors 'none'"})
 
 
@@ -101,8 +103,44 @@ async def state(request: web.Request) -> web.Response:
     if accounts.needs_setup:
         accounts.setup_code()
     vault = request.app["core"]["vault"]
-    return web.json_response({"eingerichtet": not accounts.needs_setup, "konto": request["konto"],
-                              "anbieter": [p for p in PROVIDERS if configured(vault, p)]})
+    account = request["konto"]
+    return web.json_response({"eingerichtet": not accounts.needs_setup, "konto": account,
+                              "anbieter": [p for p in PROVIDERS if configured(vault, p)],
+                              "darstellung": accounts.appearance(account["name"]) if account else None})
+
+
+@routes.put("/atrium/darstellung")
+async def appearance(request: web.Request) -> web.Response:
+    data = await body(request)
+    try:
+        return web.json_response(accounts_of(request).set_appearance(
+            request["konto"]["name"], data.get("design"), data.get("modus")))
+    except AccountError as err:
+        return api.fail(str(err))
+
+
+@routes.get("/atrium/wetter")
+async def weather(request: web.Request) -> web.Response:
+    """Weather for the background: at the position of the device, or else at home (System → Wohnort)."""
+    if not attempts(request).ok("wetter:" + (request.remote or "?")):
+        return api.fail("Zu viele Anfragen", 429)
+    core = request.app["core"]
+    try:
+        lat, lon = float(request.query["lat"]), float(request.query["lon"])
+        source = "geraet"
+    except (KeyError, ValueError):
+        home = core["system"].data.get("wohnort")
+        if not home:
+            return api.fail("Kein Ort – Standort freigeben oder unter System den Wohnort eintragen", 404)
+        lat, lon, source = home["lat"], home["lon"], "wohnort"
+    state = state_of(request)
+    if "wetter" not in state:
+        state["wetter"] = Weather(core["http"])
+    try:
+        data = await state["wetter"].at(lat, lon)
+    except WeatherError as err:
+        return api.fail(str(err), 503)
+    return web.json_response({**data, "quelle": source}, headers={"Cache-Control": "private, max-age=300"})
 
 
 # -- login ----------------------------------------------------------------------------------------

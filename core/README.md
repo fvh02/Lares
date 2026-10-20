@@ -4,7 +4,7 @@ Der zentrale Dienst von Lares. Er verwaltet die Rooms mit ihrer `room.yaml`, gib
 prüft jede Anfrage gegen die Rechte des Rooms. Daneben hält er den Schlüsseltresor, die Systemeinstellungen, die
 Benachrichtigungen, Ereignisse, Zeitpläne und Befehle bereit und leitet KI-Anfragen weiter.
 
-Version 0.4 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
+Version 0.5 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
 Tunnel und das Atrium mit Anmeldung per Passwort, Passkey, Apple oder Google.
 
 ## Was schon geht
@@ -23,7 +23,7 @@ Tunnel und das Atrium mit Anmeldung per Passwort, Passkey, Apple oder Google.
 | Befehle | ein Room mit dem Recht `befehle` (z. B. der Assistent) ruft die Befehle der anderen Rooms auf |
 | KI | geht an den Room mit dem Recht `ki_anbieter` (der Assistent mit seiner claude.ai-Anmeldung), ohne API-Key; Anfragen werden pro Room gezählt |
 | Container | Docker oder Podman: Netz `lares`, Datenordner, RAM-Grenze, Neustart bei Absturz; das Token geht über stdin hinein, nicht über die Befehlszeile |
-| Atrium | Anmeldung mit Passwort (optional Zwei-Faktor), Passkey, Apple oder Google; Startseite mit Room-Kacheln; Rooms als Kacheln mit ⋯-Menü, hinzufügen per „+“ (Datei, Text, Link, GitHub); Schlüssel, System, Fernzugriff, Konten; Avatar-Menü mit „Mein Konto“ und „Abmelden“ – im Browser auf Port 8000, auch auf dem Handy |
+| Atrium | Anmeldung mit Passwort (optional Zwei-Faktor), Passkey, Apple oder Google; Startseite mit Room-Kacheln; Rooms als Kacheln mit ⋯-Menü, hinzufügen per „+“ (Datei, Text, Link, GitHub); Schlüssel, System, Fernzugriff, Konten; Avatar-Menü mit „Mein Konto“ und „Abmelden“; Designs „Klassisch“ und „Himmel“, jeweils hell, dunkel oder automatisch – im Browser auf Port 8000, auch auf dem Handy |
 | Fernzugriff | Tailscale und Cloudflare Tunnel sind als Systemdienste eingebaut, siehe unten |
 | Gateways | Heim-Gateway (Port 8000) für alle Rooms mit Oberfläche unter `/r/<room>/`; Internet-Gateway (Port 8001, nur für cloudflared) nur für freigegebene Rooms, optional mit Zugangscode; HTTP, Uploads, Weiterleitungen und WebSockets |
 | Standort, Geräte | Schnittstelle und Rechte gibt es schon, die Antwort ist 503, bis der Device Core da ist (Etappe 3) |
@@ -88,6 +88,18 @@ Anmeldung gibt. Diese Datei gehört niemandem sonst.
     anlegen; Schlüssel `apple_client_id` (Services ID), `apple_team_id`, `apple_key_id` und `apple_private_key`
     (Inhalt der .p8-Datei).
   - Lares prüft das Token des Anbieters selbst (Signatur, Aussteller, App, Ablauf, Nonce; bei Google zusätzlich PKCE).
+- **Darstellung:** unter „Mein Konto“, gespeichert im Konto (und auf dem Gerät, damit schon die Anmeldeseite passt).
+  - *Klassisch* – das ruhige, warme Design.
+  - *Himmel* – im Hintergrund das Wetter am Ort des Geräts (sonst am Wohnort aus „System“), davor Milchglas für
+    Kopfzeile, Container, Menüs und Dialoge. Die Farben folgen dem echten Sonnenstand, den Lares aus Ort und Uhrzeit
+    berechnet: Dämmerung, Sonnenaufgang und -untergang laufen genau dann, wenn sie draußen passieren. Wolken nach
+    Bedeckung, Wind bewegt sie und neigt den Regen; dazu Niesel, Regen, Schnee, Nebel, Gewitter mit Blitzen, nachts
+    Sterne und Mond mit Phase. Im dunklen Modus wird der Himmel dunkel getönt; im hellen Modus wird die Schrift
+    direkt auf dem Himmel hell, sobald er dunkel ist. Bei „Bewegung reduzieren“ steht das Bild still.
+  - Wetter von Open-Meteo (ohne Schlüssel) über `GET /atrium/wetter`: Lares rundet den Ort auf etwa einen Kilometer
+    und fragt höchstens alle zehn Minuten, der genaue Standort verlässt Lares nicht.
+  - Zum Ausprobieren in der Browser-Konsole: `LaresSky.set({zeit: "2026-10-20T07:45:00+02:00", code: 63, wolken: 90,
+    niederschlag: 2})`, zurück mit `LaresSky.set(null)`.
 - **Rooms:** Ohne Anmeldung kommt niemand mehr an `/r/<room>/` – der Browser landet auf der Anmeldung und danach
   wieder im Room. Rooms bekommen `X-Lares-Benutzer` (URL-kodiert) und `X-Lares-Rolle`.
 - **Verwaltung:** Die Seiten nutzen dieselbe Admin-API wie `lares`; das Heim-Gateway reicht sie nur für Admins durch.
