@@ -18,6 +18,8 @@ from . import storage
 
 NAME = re.compile(r"^[A-Za-zÄÖÜäöüß0-9 ._-]{2,32}$")
 ROLES = ("admin", "bewohner")
+DESIGNS = ("klassisch", "himmel")
+MODES = ("auto", "hell", "dunkel")
 SESSION_DAYS = 30
 SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 
@@ -170,6 +172,25 @@ class Accounts:
             raise AccountError("Das Passwort stimmt nicht")
         self.accounts[name].pop("totp", None)
         self._save()
+
+    # -- appearance ---------------------------------------------------------------------------------
+    def appearance(self, name: str) -> dict:
+        saved = self.accounts[name].get("darstellung") or {}
+        return {"design": saved.get("design", "klassisch"), "modus": saved.get("modus", "auto")}
+
+    def set_appearance(self, name: str, design: str | None, mode: str | None) -> dict:
+        current = self.appearance(name)
+        if design is not None:
+            if design not in DESIGNS:
+                raise AccountError(f"Design: {', '.join(DESIGNS)}")
+            current["design"] = design
+        if mode is not None:
+            if mode not in MODES:
+                raise AccountError(f"Modus: {', '.join(MODES)}")
+            current["modus"] = mode
+        self.accounts[name]["darstellung"] = current
+        self._save()
+        return current
 
     # -- passkeys -----------------------------------------------------------------------------------
     def webauthn_id(self, name: str) -> str:

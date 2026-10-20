@@ -10,6 +10,7 @@ import aiohttp
 from aiohttp import web
 
 from lares_core.accounts import AccountError, Accounts, check_totp, totp
+from lares_core import weather
 from lares_core.api import make_app
 from lares_core.gateway import Gateway
 from lares_core.manifest import parse
@@ -116,7 +117,7 @@ class AtriumTest(unittest.IsolatedAsyncioTestCase):
         status, page, _ = await self.req("GET", "/")
         self.assertEqual(status, 200)
         self.assertEqual((await self.req("GET", "/atrium/zustand"))[1], {"eingerichtet": False, "konto": None,
-                                                                  "anbieter": []})
+                                                                  "anbieter": [], "darstellung": None})
         # before the login nothing behind the gateway is reachable
         status, _, headers = await self.req("GET", "/r/web/seite", headers={"Accept": "text/html"})
         self.assertEqual((status, unquote(headers["Location"])), (302, "/?weiter=/r/web/seite"))
@@ -158,6 +159,41 @@ class AtriumTest(unittest.IsolatedAsyncioTestCase):
         status, _, _ = await self.req("POST", "/atrium/anmelden", {"name": "Gast", "passwort": "gast-passwort",
                                                                    "code": totp(secret)})
         self.assertEqual(status, 200)
+
+    async def test_appearance(self):
+        self.core["accounts"].create("Fabian", "langes-passwort", "admin")
+        await self.req("POST", "/atrium/anmelden", {"name": "Fabian", "passwort": "langes-passwort"})
+        self.assertEqual((await self.req("GET", "/atrium/zustand"))[1]["darstellung"],
+                         {"design": "klassisch", "modus": "auto"})
+        status, data, _ = await self.req("PUT", "/atrium/darstellung", {"design": "himmel"})
+        self.assertEqual((status, data), (200, {"design": "himmel", "modus": "auto"}))
+        self.assertEqual((await self.req("PUT", "/atrium/darstellung", {"modus": "dunkel"}))[1],
+                         {"design": "himmel", "modus": "dunkel"})
+        self.assertEqual((await self.req("PUT", "/atrium/darstellung", {"design": "neon"}))[0], 400)
+        self.assertEqual(self.core["accounts"].appearance("Fabian"), {"design": "himmel", "modus": "dunkel"})
+
+    async def test_weather(self):
+        calls = []
+        meteo = web.Application()
+
+        async def forecast(request):
+            calls.append(dict(request.query))
+            return web.json_response({"current": {"temperature_2m": 12.4, "weather_code": 61, "cloud_cover": 90,
+                                                  "precipitation": 1.2, "wind_speed_10m": 14},
+                                      "daily": {"sunrise": [1760938800], "sunset": [1760976000]}})
+        meteo.router.add_get("/v1/forecast", forecast)
+        self.addCleanup(setattr, weather, "OPEN_METEO", weather.OPEN_METEO)
+        weather.OPEN_METEO = f"http://127.0.0.1:{await self.serve(meteo)}/v1/forecast"
+        self.assertEqual((await self.req("GET", "/atrium/wetter"))[0], 404)          # no place known yet
+        status, data, _ = await self.req("GET", "/atrium/wetter?lat=52.52437&lon=13.41053")
+        self.assertEqual((status, data["code"], data["wolken"], data["quelle"]), (200, 61, 90, "geraet"))
+        self.assertEqual((calls[0]["latitude"], calls[0]["longitude"]), ("52.52", "13.41"))   # rounded
+        await self.req("GET", "/atrium/wetter?lat=52.5241&lon=13.4091")                     # same km: cache
+        self.assertEqual(len(calls), 1)
+        self.core["system"].update({"wohnort": {"name": "Zuhause", "lat": 50.94, "lon": 6.96}})
+        status, data, _ = await self.req("GET", "/atrium/wetter")
+        self.assertEqual((data["quelle"], data["ort"]), ("wohnort", {"lat": 50.94, "lon": 6.96}))
+        self.assertEqual((await self.req("GET", "/atrium/wetter?lat=95&lon=0"))[0], 503)
 
     async def test_login_rate_limit(self):
         self.core["accounts"].create("Fabian", "langes-passwort", "admin")

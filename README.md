@@ -20,7 +20,7 @@ Konzept: [docs/KONZEPT.md](docs/KONZEPT.md)
 
 | Ordner | Was |
 |---|---|
-| [`core/`](core/README.md) | **Lares Core** – der zentrale Dienst (Version 0.4) |
+| [`core/`](core/README.md) | **Lares Core** – der zentrale Dienst (Version 0.5) |
 | [`sdk/python/`](sdk/python/README.md) | das SDK für Rooms: `from lares import room` |
 | [`examples/hallo/`](examples/hallo) | ein Beispiel-Room |
 
