@@ -79,9 +79,12 @@ class ContainerRuntime:
         return f"{room_container(room_id)}:{port}"
 
     async def _run(self, *args: str, check: bool = True, stdin: str | None = None) -> str:
-        proc = await asyncio.create_subprocess_exec(
-            self.command, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                self.command, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL)
+        except FileNotFoundError:
+            raise ContainerError(f"Der Befehl {self.command} fehlt auf diesem System") from None
         out, _ = await proc.communicate(stdin.encode() if stdin is not None else None)
         text = out.decode(errors="replace").strip()
         if check and proc.returncode:

@@ -42,7 +42,11 @@ def is_mounted(path) -> bool:
 
 
 async def run(*args: str, check: bool = True) -> str:
-    proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    try:
+        proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.STDOUT)
+    except FileNotFoundError:
+        raise LaufwerkError(f"Der Befehl {args[0]} fehlt auf diesem System") from None
     out, _ = await proc.communicate()
     text = out.decode(errors="replace").strip()
     if check and proc.returncode:
