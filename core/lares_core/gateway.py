@@ -1,10 +1,12 @@
 """The gateways to the surfaces of the rooms.
 
-home    (port 8000) – home network and Tailscale: every active room with a surface, at /r/<room>/
+home    (port 8000) – home network and Tailscale: the Atrium, and every active room with a surface at /r/<room>/,
+        both only after the login
 public  (port 8001) – only for cloudflared, never published on the host: only rooms released for the internet,
         by their own address (spiele.example.de) or at /r/<room>/, optionally behind an access code
 
-Rooms see X-Lares-Prefix (and X-Ingress-Path, like Home Assistant ingress) and X-Lares-Zugang (heim or extern).
+Rooms see X-Lares-Prefix (and X-Ingress-Path, like Home Assistant ingress), X-Lares-Zugang (heim or extern) and,
+at home, X-Lares-Benutzer and X-Lares-Rolle.
 """
 
 import asyncio
@@ -16,6 +18,7 @@ from urllib.parse import quote
 import aiohttp
 from aiohttp import WSMsgType, web
 
+from . import atrium
 from .notify import RateLimit
 from .remote import check_code
 
@@ -50,6 +53,8 @@ class Gateway:
 
     def app(self) -> web.Application:
         app = web.Application(client_max_size=1024 ** 3)
+        if not self.public:
+            atrium.install(app, self.core)
         app.router.add_route("*", "/{path:.*}", self.handle)
         return app
 
@@ -78,12 +83,14 @@ class Gateway:
     async def handle(self, request: web.Request) -> web.StreamResponse:
         route = self._route(request)
         if route is None:
-            if request.path == "/" and not self.public:
-                return self.index()
             return page("Nicht gefunden", "<h1>Nicht gefunden</h1>", 404)
         room, prefix, rest = route
         if not self._allowed(room):
             return page("Nicht gefunden", "<h1>Nicht gefunden</h1>", 404)
+        if not self.public and request.get("konto") is None:
+            if request.method == "GET" and "text/html" in request.headers.get("Accept", ""):
+                raise web.HTTPFound("/?weiter=" + quote(request.path_qs, safe=""))
+            return web.json_response({"fehler": "Bitte im Atrium anmelden"}, status=401)
         if prefix and request.path == prefix:
             raise web.HTTPFound(prefix + "/" + (f"?{request.query_string}" if request.query_string else ""))
         if self.public:
@@ -91,12 +98,6 @@ class Gateway:
             if gate is not None:
                 return gate
         return await self.proxy(request, room, prefix, rest)
-
-    def index(self) -> web.Response:
-        rooms = [r for r in self.core["registry"].rooms.values() if r.active and r.manifest.port and r.manifest.kachel]
-        items = "".join(f'<a class="room" href="/r/{quote(r.id)}/">{html.escape(r.manifest.name)}'
-                        f'<small>{html.escape(r.manifest.beschreibung)}</small></a>' for r in rooms)
-        return page("Lares", f"<h1>Lares</h1>{items or '<p>Noch keine Rooms mit Oberfläche.</p>'}")
 
     async def gate(self, request: web.Request, room, prefix: str, rest: str) -> web.StreamResponse | None:
         """The access code of a released room; None when the request may pass."""
@@ -147,6 +148,7 @@ class Gateway:
             "X-Forwarded-Host": request.host or "",
             "X-Lares-Prefix": prefix, "X-Ingress-Path": prefix,
             "X-Lares-Zugang": "extern" if self.public else "heim",
+            **atrium.account_headers(request.get("konto")),
         })
         return headers
 
