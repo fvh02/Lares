@@ -44,7 +44,7 @@ class NoRuntime:
     def address(self, room_id: str, port: int) -> str:
         return f"127.0.0.1:{port}"
 
-    async def start(self, room, token: str) -> None:
+    async def start(self, room, token: str, devices: list[str] | None = None) -> None:
         return None
 
     async def start_service(self, service: Service) -> None:
@@ -102,7 +102,7 @@ class ContainerRuntime:
         # Tokens go in through stdin, so they never show up in the process list.
         await self._run(*args, stdin="".join(f"{k}={v}\n" for k, v in env.items()))
 
-    async def start(self, room, token: str) -> None:
+    async def start(self, room, token: str, devices: list[str] | None = None) -> None:
         manifest = room.manifest
         if not manifest.image:
             raise ContainerError(f"{manifest.name}: room.yaml nennt kein image")
@@ -114,6 +114,8 @@ class ContainerRuntime:
         extra = ["--label", f"lares.room={manifest.id}", "-v", f"{self.host_rooms_dir / manifest.id}:/data"]
         if manifest.ram:
             extra += ["--memory", manifest.ram]
+        for node in devices or []:
+            extra += ["--device", node]
         await self._start(room_container(manifest.id), image,
                           {"LARES_URL": self.core_url, "LARES_TOKEN": token, "LARES_ROOM": manifest.id}, extra, [])
         log.info("%s gestartet (%s)", manifest.name, image)

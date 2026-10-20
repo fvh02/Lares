@@ -15,7 +15,7 @@ CLOCK = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 RAM = re.compile(r"^\d+[KMG]$")
 ARCHES = {"amd64", "aarch64", "armv7"}
 SETTING_TYPES = {"bool", "int", "float", "text", "auswahl"}
-FLAGS = ("benachrichtigen", "ki", "ki_anbieter", "standort", "befehle")
+FLAGS = ("benachrichtigen", "ki", "ki_anbieter", "standort", "befehle", "usb")
 
 
 class ManifestError(ValueError):
@@ -29,6 +29,7 @@ class Rights:
     ki_anbieter: bool = False    # answers the AI questions of the other rooms (e.g. the assistant)
     standort: bool = False
     befehle: bool = False        # may use the commands of the other rooms (e.g. the assistant)
+    usb: bool = False            # may get USB devices the admin assigns to it
     geraete: list[str] = field(default_factory=list)
     ereignisse_senden: list[str] = field(default_factory=list)
     ereignisse_empfangen: list[str] = field(default_factory=list)
@@ -39,7 +40,7 @@ class Rights:
         out = []
         words = {"benachrichtigen": "dir Nachrichten schicken", "ki": "die KI fragen",
                  "ki_anbieter": "KI-Fragen der anderen Rooms beantworten", "standort": "deinen Standort sehen",
-                 "befehle": "Befehle der anderen Rooms nutzen"}
+                 "befehle": "Befehle der anderen Rooms nutzen", "usb": "USB-Geräte nutzen, die du ihm zuweist"}
         out += [words[f] for f in FLAGS if getattr(self, f)]
         if self.geraete:
             out.append("Geräte: " + ", ".join(self.geraete))

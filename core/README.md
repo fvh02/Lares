@@ -4,7 +4,7 @@ Der zentrale Dienst von Lares. Er verwaltet die Rooms mit ihrer `room.yaml`, gib
 prüft jede Anfrage gegen die Rechte des Rooms. Daneben hält er den Schlüsseltresor, die Systemeinstellungen, die
 Benachrichtigungen, Ereignisse, Zeitpläne und Befehle bereit und leitet KI-Anfragen weiter.
 
-Version 0.6 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
+Version 0.7 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
 Tunnel und das Atrium mit Anmeldung per Passwort, Passkey, Apple oder Google.
 
 ## Was schon geht
@@ -27,6 +27,10 @@ Tunnel und das Atrium mit Anmeldung per Passwort, Passkey, Apple oder Google.
 | Fernzugriff | Tailscale und Cloudflare Tunnel sind als Systemdienste eingebaut, siehe unten |
 | Gateways | Heim-Gateway (Port 8000) für alle Rooms mit Oberfläche unter `/r/<room>/`; Internet-Gateway (Port 8001, nur für cloudflared) nur für freigegebene Rooms, optional mit Zugangscode; HTTP, Uploads, Weiterleitungen und WebSockets |
 | Speicher (Lares OS) | Rooms und Container-Images auf dem USB-Stick oder einer HDD/SSD; Laufwerke erkennen, Platte einrichten oder vorhandenen Lares-Speicher übernehmen, Umzug mit Fortschritt, beim Start einhängen (Rückfall auf den Stick) |
+| Sitzungen | jede Anmeldung mit Gerät, Netz (Heimnetz, Tailscale, Internet), IP und Art; einzeln oder alle anderen beenden; Admins beenden alle Sitzungen eines Kontos |
+| Anmelde-Warnungen | Nachricht bei Anmeldung von einem neuen Gerät (mit Link „Alle Sitzungen beenden“, nur nach Klick auf den Knopf, 7 Tage gültig, einmalig) und ab 5 Fehlversuchen in 10 Minuten |
+| USB-Geräte | Zigbee/Z-Wave-Sticks, Kameras, Drucker … werden erkannt und genau einem Room zugewiesen (Recht `usb`); der Container bekommt nur dessen Geräteknoten; an- und abstecken startet den Room neu |
+| HTTPS im Heimnetz | eigene Adresse mit Zertifikat von Let's Encrypt (DNS-01 über Cloudflare, `cloudflare_dns_token`), A-Eintrag auf die IP im Heimnetz, Erneuerung 30 Tage vor Ablauf ohne Neustart, http → https für die Adresse |
 | Standort, Geräte | Schnittstelle und Rechte gibt es schon, die Antwort ist 503, bis der Device Core da ist (Etappe 3) |
 
 Noch nicht da sind Backups, Updates, der Room Store, der Device Core und das Kommandozeilen-Werkzeug `lares`.
@@ -162,6 +166,9 @@ Für die Verwaltung (Admin-Token):
 |---|---|
 | `GET/POST /api/v1/admin/rooms` | Liste; installieren/aktualisieren mit `{room_yaml}` oder `{url}` (auch GitHub-Links auf Repository, Ordner oder Datei; nur HTTPS, nie ins Heimnetz) und `rechte_bestaetigt` (ohne Bestätigung: 409 mit den Rechten) |
 | `GET/POST /api/v1/admin/speicher` | Lares OS: Laufwerke, aktueller Ort, Umzug starten (`{ziel: "usb" oder "/dev/…", loeschen, bestaetigt}`) und verfolgen |
+| `GET/PUT /api/v1/admin/usb` | USB-Geräte und ihre Zuweisung (`{schluessel, room}`) |
+| `GET/PUT /api/v1/admin/https` · `POST …/https/holen` | HTTPS im Heimnetz: Adresse, IP, A-Eintrag, E-Mail; Zertifikat holen und Fortschritt |
+| `DELETE /api/v1/admin/konten/{name}/sitzungen` | ein Konto auf allen Geräten abmelden |
 | `GET /api/v1/admin/anmeldung` | ob Apple und Google eingerichtet sind und welche Schlüssel fehlen |
 | `DELETE /api/v1/admin/rooms/{id}?daten=loeschen` | entfernen (Daten bleiben sonst) |
 | `POST /api/v1/admin/rooms/{id}/start` · `/stop` · `/token` | starten, stoppen, neues Token (nur ohne Laufzeit) |

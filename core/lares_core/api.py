@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 import aiohttp
 from aiohttp import web
 
-from . import __version__, laufwerke, storage
+from . import __version__, laufwerke, storage, usb
 from .accounts import AccountError, Accounts
 from .bus import Bus, Busy, matches
 from .manifest import EVENT, ManifestError, parse
@@ -29,6 +29,7 @@ from .notify import MAX_IMAGE, Notifier
 from .oidc import PROVIDERS, configured
 from .registry import Registry, Room
 from .remote import Remote
+from .zertifikat import CertError, Https, home_ip
 from .runtime import ContainerError, ContainerRuntime, NoRuntime, room_container, service_container
 from .scheduler import Scheduler
 from .system import System
@@ -311,7 +312,8 @@ async def run_command(request: web.Request) -> web.Response:
 async def start_room(app: web.Application, room: Room) -> str:
     """Issues a fresh token and starts the container; returns the token (needed without a runtime)."""
     token = app["registry"].issue_token(room.id)
-    await app["runtime"].start(room, token)
+    devices = await asyncio.to_thread(app["usb"].nodes_for, room.id) if room.manifest.rechte.usb else []
+    await app["runtime"].start(room, token, devices)
     return token
 
 
@@ -417,6 +419,7 @@ async def admin_remove(request: web.Request) -> web.Response:
     room = admin_room(request)
     await core_of(request)["runtime"].remove(room_container(room.id))
     core_of(request)["registry"].remove(room.id, keep_data=request.query.get("daten") != "loeschen")
+    core_of(request)["usb"].forget_room(room.id)
     core_of(request)["remote"].release(room.id, None)
     return web.json_response({"entfernt": room.id})
 
@@ -746,6 +749,121 @@ async def admin_set_storage(request: web.Request) -> web.Response:
     return web.json_response(move.public(), status=202)
 
 
+# -- USB devices ----------------------------------------------------------------------------------
+USB_TICK = 5
+
+
+async def watch_usb(app: web.Application) -> None:
+    """Plugged in or out: the room the device is assigned to starts again with the devices that are there."""
+    while True:
+        await asyncio.sleep(USB_TICK)
+        try:
+            for room_id in await asyncio.to_thread(app["usb"].changes):
+                room = app["registry"].get(room_id)
+                if room and room.active:
+                    log.info("USB-Gerät von %s an- oder abgesteckt – Neustart", room_id)
+                    await start_room(app, room)
+        except Exception:  # noqa: BLE001 – the watch must go on
+            log.exception("USB-Überwachung")
+
+
+@routes.get("/api/v1/admin/usb")
+async def admin_usb(request: web.Request) -> web.Response:
+    require_admin(request)
+    app = core_of(request)
+    devices = await asyncio.to_thread(usb.scan)
+    for device in devices:
+        device["room"] = app["usb"].assigned.get(device["schluessel"])
+    rooms = [{"id": r.id, "name": r.manifest.name} for r in app["registry"].rooms.values() if r.manifest.rechte.usb]
+    missing = [{"schluessel": k, "room": r} for k, r in app["usb"].assigned.items()
+               if k not in {d["schluessel"] for d in devices}]
+    return web.json_response({"geraete": devices, "rooms": rooms, "nicht_angesteckt": missing})
+
+
+@routes.put("/api/v1/admin/usb")
+async def admin_set_usb(request: web.Request) -> web.Response:
+    """{schluessel, room} – room null takes the device away. The rooms concerned start again."""
+    require_admin(request)
+    app = core_of(request)
+    data = await body_of(request)
+    key, room_id = str(data.get("schluessel") or ""), data.get("room") or None
+    devices = {d["schluessel"]: d for d in await asyncio.to_thread(usb.scan)}
+    if key not in devices and key not in app["usb"].assigned:
+        return fail("Gerät nicht gefunden", 404)
+    if key in devices and not devices[key]["zuweisbar"]:
+        return fail("USB-Speicher wird unter „Speicher für Rooms“ verwaltet")
+    if room_id is not None:
+        room = app["registry"].get(str(room_id))
+        if room is None:
+            return fail("Room nicht installiert", 404)
+        if not room.manifest.rechte.usb:
+            return fail(f"{room.manifest.name} darf laut room.yaml keine USB-Geräte nutzen (Recht „usb“)")
+    before = app["usb"].assigned.get(key)
+    app["usb"].assign(key, room_id)
+    for affected in {before, room_id} - {None}:
+        room = app["registry"].get(affected)
+        if room and room.active:
+            try:
+                await start_room(app, room)
+            except ContainerError as err:
+                return fail(f"Zugewiesen, aber {room.manifest.name} startet nicht: {err}", 502)
+    return web.json_response({"schluessel": key, "room": room_id})
+
+
+@routes.delete("/api/v1/admin/konten/{name}/sitzungen")
+async def admin_end_sessions(request: web.Request) -> web.Response:
+    require_admin(request)
+    accounts: Accounts = core_of(request)["accounts"]
+    name = accounts.find(request.match_info["name"])
+    if not name:
+        return fail("Konto gibt es nicht", 404)
+    accounts.end_sessions(name)
+    return web.json_response({"ok": True})
+
+
+# -- HTTPS at home --------------------------------------------------------------------------------
+@routes.get("/api/v1/admin/https")
+async def admin_https(request: web.Request) -> web.Response:
+    require_admin(request)
+    return web.json_response(await asyncio.to_thread(core_of(request)["https"].status))
+
+
+@routes.put("/api/v1/admin/https")
+async def admin_set_https(request: web.Request) -> web.Response:
+    """{domain, a_eintrag, ip, email}"""
+    require_admin(request)
+    try:
+        core_of(request)["https"].update(await body_of(request))
+    except ValueError as err:
+        return fail(str(err))
+    return web.json_response(await asyncio.to_thread(core_of(request)["https"].status))
+
+
+@routes.post("/api/v1/admin/https/holen")
+async def admin_get_certificate(request: web.Request) -> web.Response:
+    """Points the address home (if wanted) and gets the certificate – in the background; GET shows the progress."""
+    require_admin(request)
+    app = core_of(request)
+    https: Https = app["https"]
+    if https.busy:
+        return fail("Läuft schon", 409)
+    if not https.settings["domain"]:
+        return fail("Erst eine Adresse eintragen")
+
+    async def work():
+        try:
+            if await https.keep_address(app["http"]):
+                https.steps.append(f"{https.settings['domain']} zeigt auf {https.settings['ip'] or home_ip()}")
+            await https.obtain(app["http"], app.get("acme_ssl"))
+        except CertError:
+            pass                       # the error is in the status
+        except Exception as err:  # noqa: BLE001
+            https.error, https.busy = str(err), False
+    https.busy, https.error, https.steps = True, "", ["Start"]
+    app["atrium_state"]["https_task"] = asyncio.create_task(work())
+    return web.json_response({"laeuft": True}, status=202)
+
+
 @routes.get("/api/v1/status")
 async def status(request: web.Request) -> web.Response:
     return web.json_response({"lares": __version__, "laufzeit": core_of(request)["runtime"].name})
@@ -836,6 +954,8 @@ def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: s
     app["runtime"] = runtime or NoRuntime()
     app["remote"] = Remote(core_dir, app["vault"], core_host, home_port, public_port)
     app["accounts"] = Accounts(core_dir)
+    app["usb"] = usb.Usb(core_dir)
+    app["https"] = Https(core_dir, app["vault"])
     app["atrium_state"] = {}        # passkey challenges and Apple/Google logins in progress
     app["data_dir"], app["lares_os"] = data_dir, lares_os
     app["speicher"] = {}            # a move of the rooms in progress
@@ -852,13 +972,16 @@ def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: s
             await console_info(app)
         if background:
             app["scheduler_task"] = asyncio.create_task(app["scheduler"].run())
+            app["https_task"] = asyncio.create_task(app["https"].run(app["http"]))
             if not isinstance(app["runtime"], NoRuntime):
+                app["usb"].changes()                   # what is plugged in at the start
                 await start_everything(app)
+                app["usb_task"] = asyncio.create_task(watch_usb(app))
 
     async def on_cleanup(app: web.Application) -> None:
-        task = app.get("scheduler_task")
-        if task:
-            task.cancel()
+        for name in ("scheduler_task", "usb_task", "https_task"):
+            if app.get(name):
+                app[name].cancel()
         await app["http"].close()
 
     app.on_startup.append(on_startup)

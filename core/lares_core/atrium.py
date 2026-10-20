@@ -4,6 +4,9 @@ Everything behind the home gateway needs a session now: the Atrium itself, the r
 API (/api/v1/admin/…, for admins). Changing requests must come from the Atrium's own page (Origin check).
 """
 
+import asyncio
+import html
+import ipaddress
 import logging
 import secrets
 import time
@@ -24,7 +27,7 @@ COOKIE = "lares_sitzung"
 STATIC = Path(__file__).parent / "static"
 SAFE = ("GET", "HEAD", "OPTIONS")
 OPEN = ("/atrium/zustand", "/atrium/anmelden", "/atrium/einrichten", "/atrium/passkey/anmelden", "/atrium/wetter",
-        "/atrium/static/")
+        "/atrium/static/", "/atrium/sperren/")
 CROSS_SITE = ("/atrium/anmelden/apple/zurueck",)      # Apple answers with a form POST from appleid.apple.com
 CHALLENGE_SECONDS = 300
 
@@ -75,6 +78,114 @@ def with_session(request: web.Request, response: web.Response, token: str) -> we
     response.set_cookie(COOKIE, token, max_age=30 * 86400, httponly=True, samesite="Lax", secure=secure(request),
                         path="/")
     return response
+
+
+# -- who logs in from where ------------------------------------------------------------------------
+DEVICE_COOKIE = "lares_geraet"
+FAILED_WARN = 5            # failed logins of an account within 10 minutes before a warning
+
+
+def client_ip(request: web.Request) -> str:
+    """The address of the browser – behind Tailscale Serve (a local container) taken from X-Forwarded-For."""
+    remote = request.remote or ""
+    try:
+        local = ipaddress.ip_address(remote).is_loopback or ipaddress.ip_address(remote) in DOCKER_NETS
+    except ValueError:
+        local = False
+    forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    return forwarded if local and forwarded else remote
+
+
+DOCKER_NETS = ipaddress.ip_network("172.16.0.0/12")
+TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
+
+
+def network_of(ip: str) -> str:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return "unbekannt"
+    if addr.is_loopback:
+        return "dieses Gerät"
+    if addr in TAILSCALE or (addr.version == 6 and str(addr).startswith("fd7a:115c:a1e0")):
+        return "Tailscale"
+    if addr.is_private or addr.is_link_local:
+        return "Heimnetz"
+    return "Internet"
+
+
+def device_label(user_agent: str) -> str:
+    ua = user_agent or ""
+    system = next((name for key, name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
+                                          ("Windows", "Windows"), ("Mac OS X", "Mac"), ("Macintosh", "Mac"),
+                                          ("CrOS", "ChromeOS"), ("Linux", "Linux")) if key in ua), "")
+    browser = next((name for key, name in (("Edg/", "Edge"), ("OPR/", "Opera"), ("Firefox/", "Firefox"),
+                                           ("FxiOS", "Firefox"), ("CriOS", "Chrome"), ("Chrome/", "Chrome"),
+                                           ("Safari/", "Safari")) if key in ua), "")
+    if browser and system:
+        return f"{browser} auf {system}"
+    return browser or system or "Unbekanntes Gerät"
+
+
+def session_info(request: web.Request, method: str) -> dict:
+    ip = client_ip(request)
+    return {"geraet": device_label(request.headers.get("User-Agent", "")), "ip": ip, "netz": network_of(ip),
+            "methode": method}
+
+
+async def warn_account(core: web.Application, name: str, text: str) -> None:
+    """A security message to the account's phone (System → Bewohner with the same name), else to the owner."""
+    notifier = core.get("notifier")
+    if notifier is None:
+        return
+    to = name if core["system"].phone_of(name) else None
+    try:
+        await notifier.send("lares", text, to=to, urgent=True)
+    except RuntimeError as err:
+        log.warning("Sicherheitsmeldung für %s nicht gesendet: %s", name, err)
+
+
+def start_session(request: web.Request, response: web.StreamResponse, name: str, method: str,
+                  token: str | None = None) -> web.StreamResponse:
+    """Sets the session cookie; a login from an unknown device is reported to the account."""
+    accounts = accounts_of(request)
+    info = session_info(request, method)
+    token = token or accounts.new_session(name, info)
+    with_session(request, response, token)
+    device = request.cookies.get(DEVICE_COOKIE, "")
+    if not accounts.known_device(name, device):
+        first = not accounts.has_logged_in_before(name)
+        device = secrets.token_urlsafe(24)
+        accounts.remember_device(name, device, info["geraet"])
+        response.set_cookie(DEVICE_COOKIE, device, max_age=400 * 86400, httponly=True, samesite="Lax",
+                            secure=secure(request), path="/")
+        if not first:
+            core = request.app["core"]
+            link = f"{origin_of(request)}/atrium/sperren/{accounts.block_token(name)}"
+            text = (f"Neue Anmeldung bei Lares: {name} mit {info['geraet']} ({info['netz']}, {info['ip']}, "
+                    f"{method}), {time.strftime('%d.%m. %H:%M')}.\nWarst du das nicht? Hier alle Sitzungen beenden: "
+                    f"{link}")
+            log.warning("Anmeldung von neuem Gerät: %s, %s, %s", name, info["geraet"], info["ip"])
+            asyncio.ensure_future(warn_account(core, name, text))
+    return response
+
+
+def failed_login(request: web.Request, name: str) -> None:
+    """Counts failed logins of an existing account; from the fifth within 10 minutes the account is warned once."""
+    accounts = accounts_of(request)
+    real = accounts.find(name)
+    if not real:
+        return
+    state = state_of(request).setdefault("fehlversuche", {})
+    now = time.time()
+    entry = state.setdefault(real, {"zeiten": [], "gewarnt": 0})
+    entry["zeiten"] = [t for t in entry["zeiten"] if now - t < 600] + [now]
+    if len(entry["zeiten"]) >= FAILED_WARN and now - entry["gewarnt"] > 3600:
+        entry["gewarnt"] = now
+        ip = client_ip(request)
+        text = (f"Lares: {len(entry['zeiten'])} falsche Anmeldeversuche für {real} in 10 Minuten "
+                f"({network_of(ip)}, {ip}). Ist das nicht von dir, ändere dein Passwort unter „Mein Konto“.")
+        asyncio.ensure_future(warn_account(request.app["core"], real, text))
 
 
 async def body(request: web.Request) -> dict:
@@ -155,13 +266,13 @@ async def setup(request: web.Request) -> web.Response:
     accounts = accounts_of(request)
     try:
         accounts.setup(str(data.get("code") or ""), str(data.get("name") or ""), str(data.get("passwort") or ""))
-        token = accounts.login(str(data["name"]), str(data["passwort"]))
+        token = accounts.login(str(data["name"]), str(data["passwort"]), info=session_info(request, "Passwort"))
     except AccountError as err:
         return api.fail(str(err))
     log.info("Lares eingerichtet, erstes Konto: %s", data["name"])
     if request.app["core"]["lares_os"]:
         await api.console_info(request.app["core"])      # the setup code disappears from the screen
-    return with_session(request, web.json_response({"ok": True}), token)
+    return start_session(request, web.json_response({"ok": True}), accounts.find(data["name"]), "Passwort", token)
 
 
 @routes.post("/atrium/anmelden")
@@ -170,14 +281,17 @@ async def login(request: web.Request) -> web.Response:
     name = str(data.get("name") or "")
     if not (attempts(request).ok("ip:" + (request.remote or "?")) and attempts(request).ok("name:" + name.lower())):
         return api.fail("Zu viele Versuche – bitte eine Minute warten", 429)
+    accounts = accounts_of(request)
     try:
-        token = accounts_of(request).login(name, str(data.get("passwort") or ""), str(data.get("code") or ""))
+        token = accounts.login(name, str(data.get("passwort") or ""), str(data.get("code") or ""),
+                               info=session_info(request, "Passwort"))
     except AccountError as err:
         if str(err) == "2fa":
             return web.json_response({"zwei_faktor": True}, status=401)
-        log.warning("Anmeldung für %s fehlgeschlagen (%s)", name[:32], request.remote)
+        log.warning("Anmeldung für %s fehlgeschlagen (%s)", name[:32], client_ip(request))
+        failed_login(request, name)
         return api.fail(str(err), 401)
-    return with_session(request, web.json_response({"ok": True}), token)
+    return start_session(request, web.json_response({"ok": True}), accounts.find(name), "Passwort", token)
 
 
 @routes.post("/atrium/abmelden")
@@ -306,7 +420,7 @@ async def passkey_login(request: web.Request) -> web.Response:
         return api.fail(str(err), 401)
     accounts.used_passkey(key["id"], count)
     log.info("%s mit Passkey angemeldet", name)
-    return with_session(request, web.json_response({"ok": True}), accounts.new_session(name))
+    return start_session(request, web.json_response({"ok": True}), name, "Passkey")
 
 
 @routes.post("/atrium/passkey/neu/start")
@@ -413,7 +527,7 @@ async def provider_back(request: web.Request) -> web.Response:
                         "erst mit Passwort anmelden und unter „Mein Konto“ verbinden")
     log.info("%s mit %s angemeldet", name, provider)
     response = web.HTTPSeeOther("/")
-    with_session(request, response, accounts.new_session(name))
+    start_session(request, response, name, PROVIDERS[provider]["name"])
     raise response
 
 
@@ -430,9 +544,73 @@ async def provider_unlink(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+# -- sessions --------------------------------------------------------------------------------------
+@routes.get("/atrium/sitzungen")
+async def sessions_list(request: web.Request) -> web.Response:
+    return web.json_response(accounts_of(request).list_sessions(request["konto"]["name"],
+                                                                request.cookies.get(COOKIE, "")))
+
+
+@routes.delete("/atrium/sitzungen/{id}")
+async def sessions_end(request: web.Request) -> web.Response:
+    if not accounts_of(request).end_session(request["konto"]["name"], request.match_info["id"]):
+        return api.fail("Sitzung nicht gefunden", 404)
+    return web.json_response({"ok": True})
+
+
+@routes.post("/atrium/sitzungen/andere-beenden")
+async def sessions_end_others(request: web.Request) -> web.Response:
+    ended = accounts_of(request).end_other_sessions(request["konto"]["name"], request.cookies.get(COOKIE, ""))
+    return web.json_response({"beendet": ended})
+
+
+def plain_page(title: str, body_html: str, status: int = 200) -> web.Response:
+    return web.Response(status=status, content_type="text/html", headers={"Referrer-Policy": "no-referrer"}, text=(
+        '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" '
+        f'content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>'
+        "body{font:16px/1.5 system-ui,sans-serif;max-width:480px;margin:12vh auto;padding:0 16px;color:#221d16;"
+        "background:#f6f1e7}button{font:inherit;padding:10px 16px;border:0;border-radius:10px;background:#b3261e;"
+        "color:#fff;cursor:pointer}</style></head><body>" + body_html + "</body></html>"))
+
+
+@routes.get("/atrium/sperren/{token}")
+async def block_page(request: web.Request) -> web.Response:
+    """Opened from the warning message. Only shows a button – link previews must not end the sessions."""
+    token = html.escape(request.match_info["token"])
+    return plain_page("Lares – Sitzungen beenden", (
+        "<h1>Warst du das nicht?</h1><p>Mit diesem Knopf werden <b>alle</b> Sitzungen des Kontos beendet – "
+        "auch die fremde. Danach meldest du dich neu an und änderst am besten dein Passwort.</p>"
+        f'<form method="post" action="/atrium/sperren/{token}"><button>Alle Sitzungen beenden</button></form>'))
+
+
+@routes.post("/atrium/sperren/{token}")
+async def block(request: web.Request) -> web.Response:
+    name = accounts_of(request).use_block_token(request.match_info["token"])
+    if not name:
+        return plain_page("Lares", "<h1>Link abgelaufen</h1><p>Der Link wurde schon benutzt oder ist älter als "
+                                   "7 Tage. Sitzungen lassen sich auch unter „Mein Konto“ beenden.</p>", 410)
+    log.warning("Alle Sitzungen von %s über den Warn-Link beendet (%s)", name, client_ip(request))
+    response = plain_page("Lares", "<h1>Erledigt</h1><p>Alle Sitzungen sind beendet. "
+                                   '<a href="/">Neu anmelden</a> und das Passwort ändern.</p>')
+    response.del_cookie(COOKIE, path="/")
+    return response
+
+
+@web.middleware
+async def to_https(request: web.Request, handler):
+    """Requests for the own address over plain http go to https (when the certificate is there)."""
+    https = request.app["core"]["https"]
+    domain = https.settings["domain"]
+    if domain and https.ready and not secure(request) and host_of(request).split(":")[0] == domain:
+        port = request.app["core"].get("https_port", 443)
+        raise web.HTTPMovedPermanently(f"https://{domain}{'' if port == 443 else f':{port}'}{request.path_qs}")
+    return await handler(request)
+
+
 def install(app: web.Application, core: web.Application) -> None:
     """Adds the Atrium and the admin API to the home gateway (before its catch-all route)."""
     app["core"] = core
+    app.middlewares.append(to_https)
     app.middlewares.append(sessions)
     app.add_routes(routes)
     app.router.add_static("/atrium/static/", STATIC)
