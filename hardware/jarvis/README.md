@@ -37,33 +37,43 @@ Werte für ein 80 cm breites Bild:
 
 Die Camera Module 3 NoIR (66° × 41°) sieht aus 90 cm etwa 117 × 67 cm – also die ganze Projektion mit Rand.
 
-## Stückliste (Preise ungefähr)
+## Stückliste
 
-| Teil | Anzahl | ca. € |
-|---|---|---|
-| Raspberry Pi 5, 8 GB | 1 | 85 |
-| Raspberry Pi AI HAT+ (Hailo-8L, 13 TOPS) | 1 | 75 |
-| Pi 5 Active Cooler | 1 | 6 |
-| Pi 27-W-Netzteil USB-C (Netzteil A) | 1 | 13 |
-| Camera Module 3 NoIR | 1 | 30 |
-| 850-nm-Bandpassfilter (M12 oder 12 mm aufklebbar) | 1 | 8 |
-| Kamerakabel 22 → 15 Pin, 300 mm | 1 | 3 |
-| ReSpeaker XVF3800 USB (4 Mikros) | 1 | 55 |
-| WS2812B-Ring 24 LEDs (Ø 66 mm) | 1 | 6 |
-| 74AHCT125 Pegelwandler + 330 Ω + 1000 µF | 1 | 2 |
-| 850-nm-LED 1 W auf Sternplatine + 60°-Linse | 2 | 6 |
-| Konstantstrom-Modul 350 mA (PT4115) | 1 | 3 |
-| IR-Linienlaser 850 nm, **≤ 5 mW**, 120°, Ø 12 mm | 2 | 20 |
-| AO3400 MOSFET + 100 Ω + 10 kΩ | 2 | 1 |
-| mmWave-Radar HLK-LD2410C | 1 | 5 |
-| Mikroschalter (Öffner + Schließer) | 1 | 1 |
-| Lüfter 40 × 10 mm, 5 V | 1 | 4 |
-| Netzteil 5 V / 4 A (Netzteil B) | 1 | 10 |
-| Oberflächenspiegel 100 × 100 × 3 mm | 1 | 15 |
-| M3-Gewindeeinsätze, M3-Schrauben 8/12 mm | ~40 | 8 |
-| Gummifüße, 1/4"-Einschlagmutter oder VESA-Arm | – | 5–30 |
-| PETG ca. 600 g | – | 15 |
-| **Summe ohne Beamer** | | **≈ 380–400** |
+Preise inkl. MwSt., Stand Oktober 2026, ohne Versand. „recherchiert“ = aktueller Shoppreis,
+sonst Schätzung. Vor dem Kauf im Shop prüfen.
+
+| # | Teil | Anzahl | € gesamt | Quelle |
+|---|---|---|---|---|
+| 1 | Raspberry Pi 5, 8 GB | 1 | 189,00 | BerryBase, recherchiert |
+| 2 | Raspberry Pi AI HAT+ (Hailo-8L, 13 TOPS) | 1 | 79,61 | buyzero.de, recherchiert |
+| 3 | Pi 5 Active Cooler | 1 | 5,90 | BerryBase, recherchiert |
+| 4 | Pi 27-W-Netzteil USB-C (Netzteil A) | 1 | 12,40 | BerryBase, recherchiert |
+| 5 | microSD 64 GB (A2) oder USB-Stick für Lares OS | 1 | 12 | Schätzung |
+| 6 | micro-HDMI → HDMI-Kabel, 0,5 m | 1 | 8 | Schätzung |
+| 7 | Camera Module 3 NoIR | 1 | 28,90 | BerryBase, recherchiert |
+| 8 | 850-nm-Bandpassfilter, 12 mm | 1 | 10 | Schätzung |
+| 9 | Kamerakabel 22 → 15 Pin, 300 mm | 1 | 3 | Schätzung |
+| 10 | ReSpeaker XVF3800 USB (4 Mikros) | 1 | 58,64 | Open eLab, recherchiert |
+| 11 | WS2812B-Ring 24 LEDs (Ø 66 mm) | 1 | 7 | Schätzung |
+| 12 | 74AHCT125 + 330 Ω + 1000 µF | 1 | 3 | Schätzung |
+| 13 | 850-nm-LED 1 W auf Sternplatine + 60°-Linse | 2 | 8 | Schätzung |
+| 14 | Konstantstrom-Modul 350 mA (PT4115) | 1 | 3 | Schätzung |
+| 15 | IR-Linienlaser 850 nm, **≤ 5 mW**, Ø 12 mm | 2 | 59 | Ampul.eu ≈ 29,60 €/Stk., recherchiert |
+| 16 | AO3400 MOSFET + 100 Ω + 10 kΩ | 2 | 2 | Schätzung |
+| 17 | mmWave-Radar HLK-LD2410C | 1 | 6 | eBay ab 4,94 €, recherchiert |
+| 18 | Mikroschalter (Öffner + Schließer) | 1 | 2 | Schätzung |
+| 19 | Lüfter 40 × 10 mm, 5 V | 1 | 5 | Schätzung |
+| 20 | Netzteil 5 V / 4 A (Netzteil B) | 1 | 12 | Schätzung |
+| 21 | Oberflächenspiegel 100 × 100 mm | 1 | 12 | Adamer ab 7,99 €, Größe prüfen |
+| 22 | M3-Gewindeeinsätze + Schrauben 8/12 mm | ~40 | 10 | Schätzung |
+| 23 | Kabel, JST-XH-Stecker, Lochrasterplatine | – | 10 | Schätzung |
+| 24 | Gummifüße, 1/4"-Einschlagmutter | – | 5 | Schätzung |
+| 25 | PETG ca. 600 g | – | 15 | Schätzung |
+| | **Summe ohne Beamer** | | **≈ 570** | |
+| | optional: Monitorarm / VESA-Halter | 1 | 25–40 | Schätzung |
+
+Sparen: IR-Linienlaser gibt es bei AliExpress für ca. 10 €/Stk. (Laserklasse und Leistung genau
+prüfen). Ohne Laser-Touch entfallen Nr. 15 und 16 (≈ 60 €).
 
 ## Pinbelegung
 
