@@ -8,10 +8,21 @@ KI, Standort und Geräte – darauf laufen **Rooms**, kleine Apps, die man im **
 | Begriff | Bedeutung |
 |---|---|
 | **Lares** | das Betriebssystem |
-| **Lares-Kern** | der zentrale Dienst (Rooms, Schlüssel, Rechte, Systemdienste) |
+| **Lares Core** | der zentrale Dienst (Rooms, Schlüssel, Rechte, Systemdienste) |
 | **Atrium** | das Home-Menü mit Anmeldung und den Kacheln aller Rooms |
 | **Rooms** | die Apps |
 | **Room Store** | der Katalog für Rooms |
 | **Device Core** | Geräte-Motor mit den Home-Assistant-Integrationen, unsichtbar |
 
-Status: **Konzept** – siehe [docs/KONZEPT.md](docs/KONZEPT.md).
+Konzept: [docs/KONZEPT.md](docs/KONZEPT.md)
+
+## Inhalt
+
+| Ordner | Was |
+|---|---|
+| [`core/`](core/README.md) | **Lares Core** – der zentrale Dienst (Version 0.1) |
+| [`sdk/python/`](sdk/python/README.md) | das SDK für Rooms: `from lares import room` |
+| [`examples/hallo/`](examples/hallo) | ein Beispiel-Room |
+
+Status: Etappe 1 begonnen – Room-Format, Tokens und Rechte, Tresor, Benachrichtigungen, Ereignisse, Zeitpläne,
+Befehle, KI-Weiterleitung und SDK laufen. Atrium, Device Core und Lares-Image folgen.
