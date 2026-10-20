@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <title>Jarvis-Kopf – Schaltplan Version 1</title>
+  <style>
+    .box { fill: #fffdf8; stroke: #6f6555; stroke-width: 1.5; rx: 8; }
+    .pi { fill: #fdf0e6; stroke: #a0522d; stroke-width: 2; }
+    .t { fill: #221d16; }
+    .s { fill: #6f6555; font-size: 11px; }
+    .h { font-weight: 700; font-size: 14px; }
+    .p5 { stroke: #c0392b; stroke-width: 2.2; fill: none; }
+    .gnd { stroke: #222; stroke-width: 1.6; fill: none; stroke-dasharray: 5 3; }
+    .sig { stroke: #2c6db5; stroke-width: 1.8; fill: none; }
+    .bus { stroke: #2e7d4f; stroke-width: 3; fill: none; }
+    .warn { fill: #fdecea; stroke: #b3261e; stroke-width: 1.5; }
+  </style>
+  <rect width="1200" height="820" fill="#f6f1e7"/>
+  <text x="24" y="34" class="t h" font-size="20">Jarvis-Kopf · Schaltplan Version 1</text>
+  <text x="24" y="54" class="s">rot = 5 V · gestrichelt = GND (alle Massen verbunden) · blau = Signal (3,3 V) · grün = Kabel/Bus</text>
+
+  <!-- power -->
+  <rect x="24" y="80" width="220" height="64" class="box"/>
+  <text x="36" y="104" class="t h">Netzteil A</text>
+  <text x="36" y="124" class="s">Raspberry Pi 27 W, USB-C PD</text>
+  <rect x="24" y="168" width="220" height="64" class="box"/>
+  <text x="36" y="192" class="t h">Netzteil B · 5 V / 4 A</text>
+  <text x="36" y="212" class="s">Peripherie (LEDs, Laser, Radar, Lüfter)</text>
+  <rect x="24" y="256" width="220" height="50" class="box"/>
+  <text x="36" y="279" class="t h">Beamer</text>
+  <text x="36" y="296" class="s">eigenes Netzteil</text>
+
+  <!-- Pi -->
+  <rect x="380" y="80" width="300" height="500" class="pi" rx="10"/>
+  <text x="396" y="106" class="t h">Raspberry Pi 5 (8 GB)</text>
+  <text x="396" y="124" class="s">+ AI HAT+ (Hailo-8L) über PCIe · Active Cooler</text>
+  <text x="396" y="160" class="t">USB-C ⟵ Netzteil A</text>
+  <text x="396" y="190" class="t">micro-HDMI 0 ⟶ Beamer (Bild + CEC)</text>
+  <text x="396" y="220" class="t">CSI CAM0 ⟶ Camera Module 3 NoIR</text>
+  <text x="396" y="250" class="t">USB 3 ⟶ ReSpeaker (über Schieber-Schalter)</text>
+  <text x="396" y="288" class="t">Pin 19 · GPIO10 (SPI MOSI) ⟶ LED-Ring</text>
+  <text x="396" y="318" class="t">Pin 32 · GPIO12 (PWM0) ⟶ IR-Strahler</text>
+  <text x="396" y="348" class="t">Pin 33 · GPIO13 (PWM1) ⟶ IR-Linienlaser</text>
+  <text x="396" y="378" class="t">Pin 8 · GPIO14 (TXD) ⟶ Radar RX</text>
+  <text x="396" y="408" class="t">Pin 10 · GPIO15 (RXD) ⟵ Radar TX</text>
+  <text x="396" y="438" class="t">Pin 16 · GPIO23 ⟵ Radar OUT (anwesend)</text>
+  <text x="396" y="468" class="t">Pin 15 · GPIO22 ⟵ Schieber-Schalter (Pull-up)</text>
+  <text x="396" y="498" class="t">Pin 6/9/14/20/25 · GND ═ gemeinsame Masse</text>
+  <text x="396" y="540" class="s">5-V-Pins des Pi NICHT für die Peripherie verwenden –</text>
+  <text x="396" y="556" class="s">die hängt an Netzteil B.</text>
+
+  <path d="M244 112 H380" class="p5"/>
+  <path d="M244 281 H300 V186 H380" class="bus"/>
+
+  <!-- 5V rail -->
+  <path d="M244 200 H320 V740 H1180 V124" class="p5"/>
+  <text x="1040" y="732" class="s" fill="#c0392b">5-V-Schiene (Netzteil B)</text>
+  <path d="M1160 124 H1180 M1160 232 H1180 M1160 362 H1180 M1160 492 H1180 M1160 584 H1180" class="p5"/>
+  <path d="M244 220 H300 V770 H1190" class="gnd"/>
+  <text x="1010" y="764" class="s">GND – mit Pi-GND verbunden</text>
+
+  <!-- LED ring -->
+  <rect x="780" y="80" width="380" height="88" class="box"/>
+  <text x="792" y="104" class="t h">LED-Ring WS2812B · 24 LEDs</text>
+  <text x="792" y="124" class="s">GPIO10 → 74AHCT125 (3,3 → 5 V) → 330 Ω → DIN</text>
+  <text x="792" y="142" class="s">1000 µF an 5 V/GND des Rings · Helligkeit ≤ 40 % (≈ 0,6 A)</text>
+  <text x="792" y="160" class="s">Bibliothek: Pi5Neo / SPI (Pi 5 hat kein rpi_ws281x)</text>
+  <path d="M680 284 H740 V124 H780" class="sig"/>
+  
+
+  <!-- IR LEDs -->
+  <rect x="780" y="188" width="380" height="88" class="box"/>
+  <text x="792" y="212" class="t h">IR-Strahler · 2 × 850-nm-LED 1 W</text>
+  <text x="792" y="232" class="s">Konstantstrom-Modul 350 mA (z. B. PT4115), DIM ← GPIO12 (PWM)</text>
+  <text x="792" y="250" class="s">auf Alu-Sternplatine mit Kühlfläche · 60°-Linse</text>
+  <text x="792" y="268" class="s">Kamera-Belichtung mit IR synchron takten (optional)</text>
+  <path d="M680 314 H750 V232 H780" class="sig"/>
+  
+
+  <!-- IR line lasers with interlock -->
+  <rect x="780" y="296" width="380" height="132" class="warn" rx="8"/>
+  <text x="792" y="320" class="t h">IR-Linienlaser · 2 × 850 nm, ≤ 5 mW, 120° Linie</text>
+  <text x="792" y="340" class="s">an der hinteren Tischkante, 6 mm über der Platte (Touch-Lichtebene)</text>
+  <text x="792" y="360" class="s">Low-Side-MOSFET Q1 (AO3400): Gate ← GPIO13 über 100 Ω</text>
+  <text x="792" y="378" class="s">in Reihe Q2 (Gate ← Radar OUT): Laser nur bei Anwesenheit</text>
+  <text x="792" y="396" class="s">Laser gehören nicht in Augenhöhe · nie hineinschauen · Klasse beachten</text>
+  <text x="792" y="414" class="s">Kabel zur Tischkante: 3-adrig, Stecker JST-XH</text>
+  <path d="M680 344 H760 V362 H780" class="sig"/>
+  
+
+  <!-- radar -->
+  <rect x="780" y="448" width="380" height="88" class="box"/>
+  <text x="792" y="472" class="t h">Anwesenheit · mmWave-Radar LD2410C</text>
+  <text x="792" y="492" class="s">5 V · UART 256000 Bd (TX → GPIO15, RX ← GPIO14)</text>
+  <text x="792" y="510" class="s">OUT → GPIO23 und Gate Q2 (Laser-Freigabe)</text>
+  <text x="792" y="528" class="s">im Deckel, Blick nach vorne-unten</text>
+  <path d="M680 374 H720 V478 H780" class="sig"/>
+  <path d="M680 404 H710 V492 H780" class="sig"/>
+  <path d="M680 434 H700 V510 H780" class="sig"/>
+  <path d="M760 510 V370" class="sig" stroke-dasharray="3 3"/>
+  
+
+  <!-- privacy -->
+  <rect x="24" y="340" width="300" height="130" class="box"/>
+  <text x="36" y="364" class="t h">Privatsphäre-Schieber</text>
+  <text x="36" y="384" class="s">deckt Kamera + IR-Strahler mechanisch ab</text>
+  <text x="36" y="402" class="s">Mikroschalter (Öffner) im USB-Kabel des Mikros:</text>
+  <text x="36" y="420" class="s">trennt VBUS → Mikrofon hart aus</text>
+  <text x="36" y="438" class="s">zweiter Kontakt → GPIO22 (Lares zeigt „privat“)</text>
+  <text x="36" y="456" class="s">LED-Ring wird rot, solange geschlossen</text>
+  <path d="M324 464 H380" class="sig"/>
+
+  <!-- mic, camera -->
+  <rect x="24" y="490" width="300" height="90" class="box"/>
+  <text x="36" y="514" class="t h">Mikrofon · ReSpeaker XVF3800 (USB)</text>
+  <text x="36" y="534" class="s">4 Mikros, Richtung, Echo-Unterdrückung</text>
+  <text x="36" y="552" class="s">Lautsprecher am Klinkenausgang des ReSpeaker</text>
+  <text x="36" y="570" class="s">(MAX98357A-Verstärker bei passivem Lautsprecher)</text>
+  <path d="M324 535 H350 V246 H380" class="bus"/>
+
+  <rect x="24" y="600" width="270" height="70" class="box"/>
+  <text x="36" y="624" class="t h">Camera Module 3 NoIR</text>
+  <text x="36" y="644" class="s">Kabel 22→15 Pin, 300 mm · IR-Filter: 850-nm-</text>
+  <text x="36" y="660" class="s">Bandpass vor die Linse (blendet Beamerlicht aus)</text>
+  <path d="M294 636 H340 V216 H380" class="bus"/>
+
+  <!-- fan -->
+  <rect x="780" y="556" width="380" height="56" class="box"/>
+  <text x="792" y="580" class="t h">Gehäuselüfter 40 mm · 5 V</text>
+  <text x="792" y="598" class="s">Boden Rückteil, saugt an · Abluft oben über Pi und Beamer</text>
+  
+
+  <text x="24" y="805" class="s">Alle Teile, Maße und Pinbelegung: README.md · Gehäuse: jarvis-kopf.scad</text>
+</svg>
