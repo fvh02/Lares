@@ -4,7 +4,7 @@ Der zentrale Dienst von Lares. Er verwaltet die Rooms mit ihrer `room.yaml`, gib
 prüft jede Anfrage gegen die Rechte des Rooms. Daneben hält er den Schlüsseltresor, die Systemeinstellungen, die
 Benachrichtigungen, Ereignisse, Zeitpläne und Befehle bereit und leitet KI-Anfragen weiter.
 
-Version 0.5 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
+Version 0.6 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
 Tunnel und das Atrium mit Anmeldung per Passwort, Passkey, Apple oder Google.
 
 ## Was schon geht
@@ -26,6 +26,7 @@ Tunnel und das Atrium mit Anmeldung per Passwort, Passkey, Apple oder Google.
 | Atrium | Anmeldung mit Passwort (optional Zwei-Faktor), Passkey, Apple oder Google; Startseite mit Room-Kacheln; Rooms als Kacheln mit ⋯-Menü, hinzufügen per „+“ (Datei, Text, Link, GitHub); Schlüssel, System, Fernzugriff, Konten; Avatar-Menü mit „Mein Konto“ und „Abmelden“; Designs „Klassisch“ und „Himmel“, jeweils hell, dunkel oder automatisch – im Browser auf Port 8000, auch auf dem Handy |
 | Fernzugriff | Tailscale und Cloudflare Tunnel sind als Systemdienste eingebaut, siehe unten |
 | Gateways | Heim-Gateway (Port 8000) für alle Rooms mit Oberfläche unter `/r/<room>/`; Internet-Gateway (Port 8001, nur für cloudflared) nur für freigegebene Rooms, optional mit Zugangscode; HTTP, Uploads, Weiterleitungen und WebSockets |
+| Speicher (Lares OS) | Rooms und Container-Images auf dem USB-Stick oder einer HDD/SSD; Laufwerke erkennen, Platte einrichten oder vorhandenen Lares-Speicher übernehmen, Umzug mit Fortschritt, beim Start einhängen (Rückfall auf den Stick) |
 | Standort, Geräte | Schnittstelle und Rechte gibt es schon, die Antwort ist 503, bis der Device Core da ist (Etappe 3) |
 
 Noch nicht da sind Backups, Updates, der Room Store, der Device Core und das Kommandozeilen-Werkzeug `lares`.
@@ -160,6 +161,7 @@ Für die Verwaltung (Admin-Token):
 | Methode und Pfad | Was |
 |---|---|
 | `GET/POST /api/v1/admin/rooms` | Liste; installieren/aktualisieren mit `{room_yaml}` oder `{url}` (auch GitHub-Links auf Repository, Ordner oder Datei; nur HTTPS, nie ins Heimnetz) und `rechte_bestaetigt` (ohne Bestätigung: 409 mit den Rechten) |
+| `GET/POST /api/v1/admin/speicher` | Lares OS: Laufwerke, aktueller Ort, Umzug starten (`{ziel: "usb" oder "/dev/…", loeschen, bestaetigt}`) und verfolgen |
 | `GET /api/v1/admin/anmeldung` | ob Apple und Google eingerichtet sind und welche Schlüssel fehlen |
 | `DELETE /api/v1/admin/rooms/{id}?daten=loeschen` | entfernen (Daten bleiben sonst) |
 | `POST /api/v1/admin/rooms/{id}/start` · `/stop` · `/token` | starten, stoppen, neues Token (nur ohne Laufzeit) |

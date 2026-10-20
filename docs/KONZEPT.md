@@ -1,6 +1,6 @@
 # Lares – Konzept
 
-> Stand: Oktober 2026 · Status: Etappe 1 und 2 laufen – Lares Core 0.5 mit Atrium (siehe [core/README.md](../core/README.md))
+> Stand: Oktober 2026 · Status: Etappe 1 und 2 laufen – Lares Core 0.6 mit Atrium, Lares OS vom USB-Stick (siehe [core/README.md](../core/README.md))
 
 Lares ist ein eigenes, schlankes Betriebssystem für den Heimserver. Ein Kern verwaltet alles – Schlüssel,
 Benachrichtigungen, KI, Standort, Geräte –, und darauf laufen **Rooms**: kleine Apps wie ein Spieleabend, eine
@@ -69,7 +69,7 @@ Grundsätze:
 | Dateisystem | System schreibgeschützt; alle Daten auf einer eigenen Datenpartition (`/data`) |
 | Updates | **A/B-Updates mit RAUC**: neues System in die zweite Partition, Neustart, bei Fehler automatisch zurück |
 | Container | Podman (ohne Root-Dienst) oder Docker; Images aus der GitHub Container Registry |
-| Installation | Image für USB-Stick: booten, Zielplatte wählen, fertig; danach Einrichtung im Atrium (Browser) |
+| Installation | Lares läuft direkt vom USB-Stick; bei der Einrichtung im Atrium wählt man, ob die Rooms auf dem Stick oder auf der HDD/SSD des Geräts liegen (siehe [os/README.md](../os/README.md)) |
 | Wiederherstellung | Wiederherstellungsmodus im Bootmenü; Backup-Datei zurückspielen |
 | Netz | feste Adresse oder DHCP, mDNS (`lares.local`); Fernzugriff über Tailscale und Cloudflare Tunnel, beide im System eingebaut |
 

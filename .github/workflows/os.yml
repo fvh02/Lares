@@ -1,0 +1,52 @@
+name: Lares OS
+
+on:
+  push:
+    branches: [main]
+    paths: ["os/**", "core/lares_core/**", ".github/workflows/os.yml"]
+  pull_request:
+    paths: ["os/**", "core/lares_core/**", ".github/workflows/os.yml"]
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: systemd/mkosi@v25.3
+
+      - name: Tools for the image and the boot test
+        run: |
+          sudo apt-get update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            systemd-ukify systemd-boot systemd-container debian-archive-keyring dosfstools mtools e2fsprogs \
+            kmod cpio zstd xz-utils bubblewrap qemu-system-x86 qemu-utils ovmf socat
+
+      - name: Build (Debian 13)
+        working-directory: os
+        run: |
+          VERSION=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' ../core/lares_core/__init__.py)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sudo --preserve-env=PATH mkosi --image-version="$VERSION" -f build
+          ls -lh lares-os*
+
+      - name: Boot test (USB stick + empty NVMe SSD, move the rooms, restart)
+        working-directory: os
+        run: sudo python3 -u test-vm.py lares-os.raw
+
+      - name: Compress
+        working-directory: os
+        run: |
+          sudo zstd -T0 -19 --rm -q lares-os.raw -o "lares-os-$VERSION.raw.zst"
+          sha256sum "lares-os-$VERSION.raw.zst" | tee "lares-os-$VERSION.raw.zst.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lares-os-${{ env.VERSION }}
+          path: |
+            os/lares-os-*.raw.zst
+            os/lares-os-*.raw.zst.sha256
+          compression-level: 0
+          retention-days: 30

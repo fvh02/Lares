@@ -1,0 +1,13 @@
+[Unit]
+Description=Lares-Daten auf dem Stick
+After=systemd-repart.service
+Wants=systemd-repart.service
+
+[Mount]
+What=/dev/disk/by-partlabel/lares-data
+Where=/data
+Type=ext4
+Options=noatime
+
+[Install]
+WantedBy=local-fs.target

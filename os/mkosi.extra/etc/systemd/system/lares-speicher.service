@@ -1,0 +1,15 @@
+[Unit]
+Description=Lares: Speicher für Rooms einhängen (Stick oder Festplatte)
+RequiresMountsFor=/data
+Before=docker.service lares-core.service
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PYTHONPATH=/opt/lares LARES_DATA=/data
+ExecStart=/usr/bin/python3 -m lares_core.laufwerke boot
+
+[Install]
+WantedBy=multi-user.target

@@ -117,7 +117,8 @@ class AtriumTest(unittest.IsolatedAsyncioTestCase):
         status, page, _ = await self.req("GET", "/")
         self.assertEqual(status, 200)
         self.assertEqual((await self.req("GET", "/atrium/zustand"))[1], {"eingerichtet": False, "konto": None,
-                                                                  "anbieter": [], "darstellung": None})
+                                                                  "anbieter": [], "darstellung": None,
+                                                                  "speicher_waehlen": False})
         # before the login nothing behind the gateway is reachable
         status, _, headers = await self.req("GET", "/r/web/seite", headers={"Accept": "text/html"})
         self.assertEqual((status, unquote(headers["Location"])), (302, "/?weiter=/r/web/seite"))
