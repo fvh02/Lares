@@ -9,5 +9,5 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY core/lares_core /app/lares_core
 WORKDIR /app
 ENV LARES_DATA=/data LARES_PORT=8080
-EXPOSE 8080
+EXPOSE 8080 8000
 CMD ["python", "-m", "lares_core"]

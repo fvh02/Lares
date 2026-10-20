@@ -10,6 +10,7 @@ import base64
 import json
 import logging
 import os
+import re
 import secrets
 import time
 from pathlib import Path
@@ -22,7 +23,8 @@ from .bus import Bus, Busy, matches
 from .manifest import EVENT, ManifestError, parse
 from .notify import MAX_IMAGE, Notifier
 from .registry import Registry, Room
-from .runtime import ContainerError, ContainerRuntime, NoRuntime
+from .remote import Remote
+from .runtime import ContainerError, ContainerRuntime, NoRuntime, room_container, service_container
 from .scheduler import Scheduler
 from .system import System
 from .vault import Vault
@@ -304,7 +306,8 @@ async def admin_rooms(request: web.Request) -> web.Response:
     out = []
     for room in request.app["registry"].rooms.values():
         out.append({**room.info(), "verbunden": bus.connected(room.id),
-                    "container": await request.app["runtime"].status(room.id)})
+                    "container": await request.app["runtime"].status(room_container(room.id)),
+                    "freigabe": request.app["remote"].public_release(room.id)})
     return web.json_response(out)
 
 
@@ -346,8 +349,9 @@ def admin_room(request: web.Request) -> Room:
 @routes.delete("/api/v1/admin/rooms/{room}")
 async def admin_remove(request: web.Request) -> web.Response:
     room = admin_room(request)
-    await request.app["runtime"].remove(room.id)
+    await request.app["runtime"].remove(room_container(room.id))
     request.app["registry"].remove(room.id, keep_data=request.query.get("daten") != "loeschen")
+    request.app["remote"].release(room.id, None)
     return web.json_response({"entfernt": room.id})
 
 
@@ -357,7 +361,7 @@ async def admin_start_stop(request: web.Request) -> web.Response:
     registry: Registry = request.app["registry"]
     if request.match_info["action"] == "stop":
         registry.set_active(room.id, False)
-        await request.app["runtime"].stop(room.id)
+        await request.app["runtime"].stop(room_container(room.id))
         return web.json_response({"aktiv": False})
     registry.set_active(room.id, True)
     try:
@@ -401,7 +405,7 @@ async def admin_set_settings(request: web.Request) -> web.Response:
 @routes.get("/api/v1/admin/rooms/{room}/logs")
 async def admin_logs(request: web.Request) -> web.Response:
     room = admin_room(request)
-    return web.Response(text=await request.app["runtime"].logs(room.id))
+    return web.Response(text=await request.app["runtime"].logs(room_container(room.id)))
 
 
 @routes.get("/api/v1/admin/schluessel")
@@ -425,6 +429,12 @@ async def admin_set_key(request: web.Request) -> web.Response:
         request.app["vault"].set(request.match_info["name"], str(data.get("wert") or ""))
     except ValueError as err:
         return fail(str(err))
+    service = SERVICE_KEYS.get(request.match_info["name"])
+    if service and request.app["remote"].data[service]["aktiv"]:
+        try:
+            await start_service(request.app, service)     # restart with the new key
+        except (ContainerError, ValueError) as err:
+            return fail(f"Gespeichert, aber {service} nicht neu gestartet: {err}", 502)
     return web.json_response({"gespeichert": True})
 
 
@@ -468,6 +478,89 @@ async def admin_ai_usage(request: web.Request) -> web.Response:
     return web.json_response(request.app["ai_usage"])
 
 
+# -- remote access (Tailscale, Cloudflare Tunnel) -------------------------------------------------
+SERVICES = ("tailscale", "cloudflared")
+SERVICE_KEYS = {"tailscale_authkey": "tailscale", "cloudflare_tunnel_token": "cloudflared"}
+LOGIN_URL = re.compile(r"https://login\.tailscale\.com/a/[A-Za-z0-9]+")
+
+
+async def start_service(app: web.Application, name: str) -> None:
+    remote: Remote = app["remote"]
+    service = remote.tailscale_service() if name == "tailscale" else remote.cloudflared_service()
+    await app["runtime"].start_service(service)
+
+
+async def service_state(app: web.Application, name: str) -> dict:
+    runtime = app["runtime"]
+    state = await runtime.status(service_container(name))
+    out = {"container": state}
+    if name == "tailscale" and state == "running":
+        logs = await runtime.logs(service_container(name), 400)
+        login = LOGIN_URL.findall(logs)
+        if login and "Startup complete" not in logs.split(login[-1])[-1]:
+            out["anmelden"] = login[-1]     # no key: log in once on this page (works from the phone)
+    return out
+
+
+@routes.get("/api/v1/admin/fernzugriff")
+async def admin_remote(request: web.Request) -> web.Response:
+    require_admin(request)
+    remote: Remote = request.app["remote"]
+    vault: Vault = request.app["vault"]
+    return web.json_response({
+        "tailscale": {**remote.data["tailscale"], "schluessel": bool(vault.get("tailscale_authkey")),
+                      **await service_state(request.app, "tailscale")},
+        "cloudflared": {**remote.data["cloudflared"], "schluessel": bool(vault.get("cloudflare_tunnel_token")),
+                        "ziel": f"http://{remote.core_host}:{remote.public_port}",
+                        **await service_state(request.app, "cloudflared")},
+        "freigaben": {rid: remote.public_release(rid) for rid in remote.data["freigaben"]},
+    })
+
+
+@routes.put("/api/v1/admin/fernzugriff/{name:tailscale|cloudflared}")
+async def admin_set_remote(request: web.Request) -> web.Response:
+    """Saves the settings and starts or stops the service accordingly."""
+    require_admin(request)
+    name, remote = request.match_info["name"], request.app["remote"]
+    data = await body_of(request)
+    try:
+        settings = remote.set_tailscale(data) if name == "tailscale" else remote.set_cloudflared(data)
+        if settings["aktiv"]:
+            await start_service(request.app, name)
+        else:
+            await request.app["runtime"].remove(service_container(name))
+    except ValueError as err:
+        return fail(str(err))
+    except ContainerError as err:
+        return fail(str(err), 502)
+    return web.json_response({**settings, **await service_state(request.app, name)})
+
+
+@routes.get("/api/v1/admin/fernzugriff/{name:tailscale|cloudflared}/logs")
+async def admin_remote_logs(request: web.Request) -> web.Response:
+    require_admin(request)
+    return web.Response(text=await request.app["runtime"].logs(service_container(request.match_info["name"])))
+
+
+@routes.put("/api/v1/admin/rooms/{room}/freigabe")
+async def admin_release(request: web.Request) -> web.Response:
+    """Releases a room for the internet: {host?, zugangscode?}. Only rooms with oberflaeche.oeffentlich."""
+    room = admin_room(request)
+    if not room.manifest.port or not room.manifest.oeffentlich:
+        return fail(f"{room.manifest.name} ist laut room.yaml nicht für das Internet gedacht (oberflaeche.oeffentlich)")
+    try:
+        return web.json_response(request.app["remote"].release(room.id, await body_of(request)))
+    except ValueError as err:
+        return fail(str(err))
+
+
+@routes.delete("/api/v1/admin/rooms/{room}/freigabe")
+async def admin_withdraw(request: web.Request) -> web.Response:
+    room = admin_room(request)
+    request.app["remote"].release(room.id, None)
+    return web.json_response({"freigabe": None})
+
+
 @routes.get("/api/v1/status")
 async def status(request: web.Request) -> web.Response:
     return web.json_response({"lares": __version__, "laufzeit": request.app["runtime"].name})
@@ -492,13 +585,14 @@ def admin_token_of(core_dir: Path) -> str:
     return token
 
 
-def make_runtime(kind: str, core_url: str, host_rooms_dir: Path):
+def make_runtime(kind: str, core_url: str, host_data_dir: Path, local_data_dir: Path):
     if kind in ("docker", "podman"):
-        return ContainerRuntime(kind, core_url, host_rooms_dir)
+        return ContainerRuntime(kind, core_url, host_data_dir, local_data_dir)
     return NoRuntime()
 
 
-def make_app(data_dir: Path, runtime=None, background: bool = True) -> web.Application:
+def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: str = "lares-core",
+             home_port: int = 8000, public_port: int = 8001) -> web.Application:
     core_dir, rooms_dir = data_dir / "core", data_dir / "rooms"
     core_dir.mkdir(parents=True, exist_ok=True)
     app = web.Application(client_max_size=12 * 1024 * 1024, middlewares=[security_headers])
@@ -510,6 +604,7 @@ def make_app(data_dir: Path, runtime=None, background: bool = True) -> web.Appli
     app["admin_token"] = admin_token_of(core_dir)
     app["ai_usage"] = storage.load(core_dir / "ki.json", {})
     app["runtime"] = runtime or NoRuntime()
+    app["remote"] = Remote(core_dir, app["vault"], core_host, home_port, public_port)
     app.add_routes(routes)
 
     async def on_startup(app: web.Application) -> None:
@@ -525,6 +620,12 @@ def make_app(data_dir: Path, runtime=None, background: bool = True) -> web.Appli
                             await start_room(app, room)
                         except ContainerError as err:
                             log.warning("%s nicht gestartet: %s", room.id, err)
+                for name in SERVICES:
+                    if app["remote"].data[name]["aktiv"]:
+                        try:
+                            await start_service(app, name)
+                        except (ContainerError, ValueError) as err:
+                            log.warning("Dienst %s nicht gestartet: %s", name, err)
 
     async def on_cleanup(app: web.Application) -> None:
         task = app.get("scheduler_task")
