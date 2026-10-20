@@ -71,7 +71,7 @@ Grundsätze:
 | Container | Podman (ohne Root-Dienst) oder Docker; Images aus der GitHub Container Registry |
 | Installation | Image für USB-Stick: booten, Zielplatte wählen, fertig; danach Einrichtung im Atrium (Browser) |
 | Wiederherstellung | Wiederherstellungsmodus im Bootmenü; Backup-Datei zurückspielen |
-| Netz | feste Adresse oder DHCP, mDNS (`lares.local`), optional Fernzugriff über einen Tunnel-Room |
+| Netz | feste Adresse oder DHCP, mDNS (`lares.local`); Fernzugriff über Tailscale und Cloudflare Tunnel, beide im System eingebaut |
 
 Ziel: Das Basis-OS ist langweilig und stabil. Neues passiert in Kern und Rooms, nicht im OS.
 
@@ -97,7 +97,7 @@ Der Kern ist ein Dienst (heute der Master, weiterentwickelt). Er bietet:
 | **Speicher** | Datenordner pro Room, Teil der Backups |
 | **Backups** | komplette oder einzelne Rooms, zeitgesteuert, optional extern |
 | **Updates** | Basis-OS, Kern, Device Core und Rooms; mit Rückfall bei Problemen |
-| **Fernzugriff** | Freigabe einzelner Rooms nach außen (z. B. Spieleabend für Freunde), mit Zugangscodes |
+| **Fernzugriff** | eingebaut: **Tailscale** (eigene Geräte, privat, optional Heimnetz-Routen und Exit-Node) und **Cloudflare Tunnel** (Internet, nur freigegebene Rooms mit eigener Adresse und optionalem Zugangscode) |
 | **Systemeinstellungen** | Wohnort, Zeitzone, Sprache, Bewohner |
 
 ---

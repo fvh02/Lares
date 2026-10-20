@@ -4,7 +4,7 @@ Der zentrale Dienst von Lares. Er verwaltet die Rooms mit ihrer `room.yaml`, gib
 prüft jede Anfrage gegen die Rechte des Rooms. Daneben hält er den Schlüsseltresor, die Systemeinstellungen, die
 Benachrichtigungen, Ereignisse, Zeitpläne und Befehle bereit und leitet KI-Anfragen weiter.
 
-Version 0.1 ist der Anfang von Etappe 1 aus dem [Konzept](../docs/KONZEPT.md).
+Version 0.2 gehört zu Etappe 1 aus dem [Konzept](../docs/KONZEPT.md) und bringt den Fernzugriff mit Tailscale und Cloudflare Tunnel.
 
 ## Was schon geht
 
@@ -22,10 +22,12 @@ Version 0.1 ist der Anfang von Etappe 1 aus dem [Konzept](../docs/KONZEPT.md).
 | Befehle | ein Room mit dem Recht `befehle` (z. B. der Assistent) ruft die Befehle der anderen Rooms auf |
 | KI | geht an den Room mit dem Recht `ki_anbieter` (der Assistent mit seiner claude.ai-Anmeldung), ohne API-Key; Anfragen werden pro Room gezählt |
 | Container | Docker oder Podman: Netz `lares`, Datenordner, RAM-Grenze, Neustart bei Absturz; das Token geht über stdin hinein, nicht über die Befehlszeile |
+| Fernzugriff | Tailscale und Cloudflare Tunnel sind als Systemdienste eingebaut, siehe unten |
+| Gateways | Heim-Gateway (Port 8000) für alle Rooms mit Oberfläche unter `/r/<room>/`; Internet-Gateway (Port 8001, nur für cloudflared) nur für freigegebene Rooms, optional mit Zugangscode; HTTP, Uploads, Weiterleitungen und WebSockets |
 | Standort, Geräte | Schnittstelle und Rechte gibt es schon, die Antwort ist 503, bis der Device Core da ist (Etappe 3) |
 
-Noch nicht da sind das Atrium mit Anmeldung, der Proxy zu den Room-Oberflächen, Backups, Updates, der Fernzugriff,
-der Device Core und das Kommandozeilen-Werkzeug `lares`.
+Noch nicht da sind das Atrium mit Anmeldung, Backups, Updates, der Device Core und das Kommandozeilen-Werkzeug
+`lares`. Bis das Atrium eine Anmeldung hat, ist das Heim-Gateway für alle im Heimnetz und im Tailnet offen.
 
 ## Starten
 
@@ -38,8 +40,12 @@ cd core && LARES_DATA=/tmp/lares LARES_PORT=8080 python -m lares_core
 |---|---|---|
 | `LARES_DATA` | Datenpartition | `/data` |
 | `LARES_PORT` | Port der API | `8080` |
+| `LARES_HEIM_PORT` | Heim-Gateway (Heimnetz, Tailscale) | `8000` |
+| `LARES_EXTERN_PORT` | Internet-Gateway, nur im Netz `lares` für cloudflared – nicht auf dem Host freigeben | `8001` |
+| `LARES_CORE_HOST` | Name des Kerns im Netz `lares` | `lares-core` |
 | `LARES_RUNTIME` | `docker`, `podman` oder `keine` (Rooms werden dann von Hand gestartet, zum Entwickeln) | `keine` |
-| `LARES_CORE_URL` | Adresse, unter der die Rooms den Kern erreichen | `http://lares-core:<port>/api/v1` |
+| `LARES_CORE_URL` | Adresse, unter der die Rooms den Kern erreichen | `http://<host>:<port>/api/v1` |
+| `LARES_TAILSCALE_IMAGE` · `LARES_CLOUDFLARED_IMAGE` | Images der Dienste | `tailscale/tailscale:v1.86.2` · `cloudflare/cloudflared:2025.8.0` |
 | `LARES_HOST_DATA` | Pfad der Datenpartition auf dem Host, wenn der Kern selbst im Container läuft | = `LARES_DATA` |
 
 Als Container:
@@ -47,13 +53,43 @@ Als Container:
 ```sh
 docker build -f core/Dockerfile -t lares-core .
 docker network create lares
-docker run -d --name lares-core --network lares -p 8080:8080 \
+docker run -d --name lares-core --network lares -p 8080:8080 -p 8000:8000 \
   -v /srv/lares:/data -v /var/run/docker.sock:/var/run/docker.sock \
   -e LARES_RUNTIME=docker -e LARES_HOST_DATA=/srv/lares lares-core
 ```
 
 Beim ersten Start legt der Kern `/data/core/admin.token` an. Damit arbeiten das Atrium und `lares`, bis es eine
 Anmeldung gibt. Diese Datei gehört niemandem sonst.
+
+## Fernzugriff
+
+Beides läuft als Container neben dem Kern (`lares-tailscale`, `lares-cloudflared`). Die Schlüssel liegen im Tresor
+und gehen über stdin in den Container, also nie über die Befehlszeile.
+
+**Tailscale** – deine Geräte, privat:
+
+1. Auf login.tailscale.com → Settings → Keys einen Auth-Key anlegen und als Schlüssel `tailscale_authkey`
+   eintragen. Ohne Key zeigt `GET /api/v1/admin/fernzugriff` unter `anmelden` einen Link zum einmaligen Anmelden,
+   das geht auch vom Handy.
+2. `PUT /api/v1/admin/fernzugriff/tailscale` mit `{"aktiv": true, "hostname": "lares"}`, optional
+   `"routen": ["192.168.178.0/24"]` (Heimnetz von unterwegs) und `"exit_node": true`.
+3. Lares ist dann unter `https://lares.<tailnet>.ts.net` erreichbar (im Tailnet HTTPS einschalten). Das ist das
+   Heim-Gateway mit allen Rooms.
+
+**Cloudflare Tunnel** – das Internet, nur für freigegebene Rooms:
+
+1. Im Cloudflare-Dashboard unter Zero Trust → Networks → Tunnels einen Tunnel anlegen. Das Token wird als
+   Schlüssel `cloudflare_tunnel_token` eingetragen.
+2. Im Tunnel für jede öffentliche Adresse (z. B. `spiele.example.de`) als Dienst `http://lares-core:8001` eintragen.
+3. `PUT /api/v1/admin/fernzugriff/cloudflared` mit `{"aktiv": true}`.
+4. Einen Room freigeben: `PUT /api/v1/admin/rooms/<id>/freigabe` mit `{"host": "spiele.example.de",
+   "zugangscode": "…"}`. Das geht nur bei Rooms mit `oberflaeche.oeffentlich: true` in der `room.yaml`. Der
+   Zugangscode ist optional (mindestens 8 Zeichen) und wird nur als Hash gespeichert. Nach der Eingabe gilt ein
+   Cookie 90 Tage, bei 10 Fehlversuchen pro Minute ist Pause.
+
+Alles andere bleibt aus dem Internet unerreichbar: das Internet-Gateway kennt nur freigegebene Rooms, die API und das
+Heim-Gateway hängen nicht am Tunnel. Rooms erkennen am Kopf `X-Lares-Zugang` (`heim` oder `extern`), woher eine
+Anfrage kommt, und bekommen `X-Lares-Prefix` bzw. `X-Ingress-Path` wie bei Home Assistant Ingress.
 
 ## Schnittstelle
 
@@ -89,6 +125,9 @@ Für die Verwaltung (Admin-Token):
 | `GET/PUT /api/v1/admin/system` | Systemeinstellungen |
 | `POST /api/v1/admin/test/melden` | Testnachricht |
 | `GET /api/v1/admin/ki` | KI-Anfragen pro Room |
+| `GET /api/v1/admin/fernzugriff` | Tailscale, cloudflared (Zustand, Anmelde-Link) und Freigaben |
+| `PUT /api/v1/admin/fernzugriff/tailscale` · `/cloudflared` | einstellen und ein- oder ausschalten; `…/logs` für das Log |
+| `PUT/DELETE /api/v1/admin/rooms/{id}/freigabe` | Room fürs Internet freigeben (`{host?, zugangscode?}`) oder zurückziehen |
 
 ## Tests
 
@@ -98,4 +137,5 @@ cd core && PYTHONPATH=. python -m unittest discover -s tests -v
 
 Die Tests starten den Kern, den Beispiel-Room `hallo` als eigenen Prozess und einen KI-Room und prüfen dann Befehle,
 Einstellungen, Ereignisse zwischen Rooms, Schlüssel und Rechte, die KI-Weiterleitung, Benachrichtigungen mit
-Ruhezeit und Zeitpläne.
+Ruhezeit und Zeitpläne. Dazu kommen die Gateways mit einem Test-Room (Präfix, Weiterleitungen, Uploads, WebSockets,
+Freigaben, Zugangscode) und die Container-Befehle für Tailscale und cloudflared.

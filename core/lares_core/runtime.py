@@ -1,8 +1,10 @@
-"""Starts and stops the room containers (Podman or Docker), each with its own token and data folder."""
+"""Starts and stops containers (Podman or Docker): the rooms, each with its own token and data folder, and the
+system services (Tailscale, Cloudflare Tunnel)."""
 
 import asyncio
 import logging
 import platform
+from dataclasses import dataclass, field
 from pathlib import Path
 
 log = logging.getLogger("lares.runtime")
@@ -14,37 +16,64 @@ class ContainerError(RuntimeError):
     pass
 
 
+def room_container(room_id: str) -> str:
+    return f"lares-room-{room_id}"
+
+
+def service_container(name: str) -> str:
+    return f"lares-{name}"
+
+
+@dataclass
+class Service:
+    """A system container. env goes in through stdin (it may hold keys); its data folder is mounted at mount."""
+    name: str
+    image: str
+    env: dict[str, str] = field(default_factory=dict)
+    command: list[str] = field(default_factory=list)
+    mount: str = ""
+    files: dict[str, str] = field(default_factory=dict)     # written into the data folder before the start
+
+
 class NoRuntime:
-    """For development and tests: rooms are started by hand (lares room dev) and only get a token."""
+    """For development and tests: rooms are started by hand (lares room dev) and only get a token; their surface
+    is expected on this machine at the port from room.yaml."""
 
     name = "keine"
+
+    def address(self, room_id: str, port: int) -> str:
+        return f"127.0.0.1:{port}"
 
     async def start(self, room, token: str) -> None:
         return None
 
-    async def stop(self, room_id: str) -> None:
+    async def start_service(self, service: Service) -> None:
+        raise ContainerError("Ohne Container-Laufzeit (LARES_RUNTIME) laufen keine Systemdienste")
+
+    async def stop(self, container: str) -> None:
         return None
 
-    async def remove(self, room_id: str) -> None:
+    async def remove(self, container: str) -> None:
         return None
 
-    async def status(self, room_id: str) -> str:
+    async def status(self, container: str) -> str:
         return "manuell"
 
-    async def logs(self, room_id: str, lines: int = 200) -> str:
+    async def logs(self, container: str, lines: int = 200) -> str:
         return ""
 
 
 class ContainerRuntime:
-    """Uses the docker or podman command; the rooms share the network "lares" with the core."""
+    """Uses the docker or podman command; rooms and services share the network "lares" with the core."""
 
-    def __init__(self, command: str, core_url: str, host_rooms_dir: Path, network: str = "lares"):
-        self.name, self.command, self.core_url = command, command, core_url
-        self.host_rooms_dir, self.network = host_rooms_dir, network
+    def __init__(self, command: str, core_url: str, host_data_dir: Path, local_data_dir: Path | None = None,
+                 network: str = "lares"):
+        self.name, self.command, self.core_url, self.network = command, command, core_url, network
+        self.host_data_dir = host_data_dir                         # the data partition as the host sees it
+        self.local_data_dir = local_data_dir or host_data_dir      # … and as the core sees it
 
-    @staticmethod
-    def container(room_id: str) -> str:
-        return f"lares-room-{room_id}"
+    def address(self, room_id: str, port: int) -> str:
+        return f"{room_container(room_id)}:{port}"
 
     async def _run(self, *args: str, check: bool = True, stdin: str | None = None) -> str:
         proc = await asyncio.create_subprocess_exec(
@@ -56,6 +85,16 @@ class ContainerRuntime:
             raise ContainerError(f"{self.command} {args[0]}: {text[-400:]}")
         return text
 
+    async def _start(self, name: str, image: str, env: dict[str, str], extra: list[str], command: list[str]) -> None:
+        if any("\n" in k or "\n" in v for k, v in env.items()):
+            raise ContainerError("Zeilenumbruch in einer Umgebungsvariable")
+        await self.remove(name)
+        await self._run("network", "create", self.network, check=False)
+        args = ["run", "-d", "--name", name, "--network", self.network, "--restart", "unless-stopped",
+                "--env-file", "/dev/stdin", *extra, image, *command]
+        # Tokens go in through stdin, so they never show up in the process list.
+        await self._run(*args, stdin="".join(f"{k}={v}\n" for k, v in env.items()))
+
     async def start(self, room, token: str) -> None:
         manifest = room.manifest
         if not manifest.image:
@@ -65,27 +104,33 @@ class ContainerRuntime:
         image = manifest.image.replace("{arch}", ARCH)
         if ":" not in image.rsplit("/", 1)[-1]:
             image += f":{manifest.version}"
-        await self.remove(manifest.id)
-        await self._run("network", "create", self.network, check=False)
-        args = ["run", "-d", "--name", self.container(manifest.id), "--network", self.network,
-                "--restart", "unless-stopped", "--label", f"lares.room={manifest.id}",
-                "--env-file", "/dev/stdin", "-v", f"{self.host_rooms_dir / manifest.id}:/data"]
+        extra = ["--label", f"lares.room={manifest.id}", "-v", f"{self.host_data_dir / 'rooms' / manifest.id}:/data"]
         if manifest.ram:
-            args += ["--memory", manifest.ram]
-        # The token goes in through stdin, so it never shows up in the process list.
-        env = f"LARES_URL={self.core_url}\nLARES_TOKEN={token}\nLARES_ROOM={manifest.id}\n"
-        await self._run(*args, image, stdin=env)
+            extra += ["--memory", manifest.ram]
+        await self._start(room_container(manifest.id), image,
+                          {"LARES_URL": self.core_url, "LARES_TOKEN": token, "LARES_ROOM": manifest.id}, extra, [])
         log.info("%s gestartet (%s)", manifest.name, image)
 
-    async def stop(self, room_id: str) -> None:
-        await self._run("stop", self.container(room_id), check=False)
+    async def start_service(self, service: Service) -> None:
+        extra = ["--label", f"lares.dienst={service.name}"]
+        if service.mount:
+            local = self.local_data_dir / "system" / service.name
+            local.mkdir(parents=True, exist_ok=True)
+            for filename, content in service.files.items():
+                (local / filename).write_text(content)
+            extra += ["-v", f"{self.host_data_dir / 'system' / service.name}:{service.mount}"]
+        await self._start(service_container(service.name), service.image, service.env, extra, service.command)
+        log.info("Dienst %s gestartet (%s)", service.name, service.image)
 
-    async def remove(self, room_id: str) -> None:
-        await self._run("rm", "-f", self.container(room_id), check=False)
+    async def stop(self, container: str) -> None:
+        await self._run("stop", container, check=False)
 
-    async def status(self, room_id: str) -> str:
-        out = await self._run("inspect", "-f", "{{.State.Status}}", self.container(room_id), check=False)
+    async def remove(self, container: str) -> None:
+        await self._run("rm", "-f", container, check=False)
+
+    async def status(self, container: str) -> str:
+        out = await self._run("inspect", "-f", "{{.State.Status}}", container, check=False)
         return out if out and " " not in out else "fehlt"
 
-    async def logs(self, room_id: str, lines: int = 200) -> str:
-        return await self._run("logs", "--tail", str(lines), self.container(room_id), check=False)
+    async def logs(self, container: str, lines: int = 200) -> str:
+        return await self._run("logs", "--tail", str(lines), container, check=False)
