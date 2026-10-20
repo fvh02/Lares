@@ -132,7 +132,8 @@ class Accounts:
         return [n for n, a in self.accounts.items() if a["rolle"] == "admin"]
 
     def public(self) -> list[dict]:
-        return [{"name": n, "rolle": a["rolle"], "zwei_faktor": bool(a.get("totp")), "erstellt": a["erstellt"]}
+        return [{"name": n, "rolle": a["rolle"], "zwei_faktor": bool(a.get("totp")), "erstellt": a["erstellt"],
+                 "passkeys": len(a.get("passkeys", [])), "verknuepft": sorted(a.get("verknuepft", {}))}
                 for n, a in sorted(self.accounts.items())]
 
     def set_password(self, name: str, old: str, new: str) -> None:
@@ -170,6 +171,64 @@ class Accounts:
         self.accounts[name].pop("totp", None)
         self._save()
 
+    # -- passkeys -----------------------------------------------------------------------------------
+    def webauthn_id(self, name: str) -> str:
+        """The random user handle of the account for passkeys (never the name)."""
+        account = self.accounts[name]
+        if not account.get("webauthn_id"):
+            account["webauthn_id"] = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode().rstrip("=")
+            self._save()
+        return account["webauthn_id"]
+
+    def passkeys(self, name: str) -> list[dict]:
+        return [{"id": p["id"], "name": p["name"], "erstellt": p["erstellt"], "zuletzt": p.get("zuletzt")}
+                for p in self.accounts[name].get("passkeys", [])]
+
+    def add_passkey(self, name: str, key: dict, label: str) -> None:
+        if self.find_passkey(key["id"]):
+            raise AccountError("Diesen Passkey gibt es schon")
+        self.accounts[name].setdefault("passkeys", []).append(
+            {**key, "name": (label or "Passkey").strip()[:40], "erstellt": int(time.time())})
+        self._save()
+
+    def remove_passkey(self, name: str, key_id: str) -> None:
+        keys = self.accounts[name].get("passkeys", [])
+        self.accounts[name]["passkeys"] = [p for p in keys if p["id"] != key_id]
+        self._save()
+
+    def find_passkey(self, key_id: str) -> tuple[str, dict] | None:
+        for name, account in self.accounts.items():
+            for key in account.get("passkeys", []):
+                if key["id"] == key_id:
+                    return name, key
+        return None
+
+    def used_passkey(self, key_id: str, count: int) -> None:
+        found = self.find_passkey(key_id)
+        if found:
+            found[1].update(sign_count=count, zuletzt=int(time.time()))
+            self._save()
+
+    # -- Apple and Google -----------------------------------------------------------------------------
+    def link(self, name: str, provider: str, sub: str, email: str) -> None:
+        other = self.find_link(provider, sub)
+        if other and other != name:
+            raise AccountError(f"Dieses Konto ist schon mit {other} verbunden")
+        self.accounts[name].setdefault("verknuepft", {})[provider] = {"sub": sub, "email": email,
+                                                                      "seit": int(time.time())}
+        self._save()
+
+    def unlink(self, name: str, provider: str) -> None:
+        self.accounts[name].get("verknuepft", {}).pop(provider, None)
+        self._save()
+
+    def find_link(self, provider: str, sub: str) -> str | None:
+        return next((n for n, a in self.accounts.items()
+                     if a.get("verknuepft", {}).get(provider, {}).get("sub") == sub), None)
+
+    def links(self, name: str) -> dict:
+        return {p: {"email": v["email"], "seit": v["seit"]} for p, v in self.accounts[name].get("verknuepft", {}).items()}
+
     # -- login and sessions -------------------------------------------------------------------------
     def login(self, name: str, password: str, code: str = "") -> str:
         """Returns a session token; raises AccountError ("2fa" when the code is missing)."""
@@ -185,9 +244,12 @@ class Accounts:
                 raise AccountError("2fa")
             if not check_totp(account["totp"], code):
                 raise AccountError("Der Code stimmt nicht")
+        return self.new_session(real)
+
+    def new_session(self, name: str) -> str:
         token = secrets.token_urlsafe(32)
         now = int(time.time())
-        self.sessions[_hash(token)] = {"name": real, "erstellt": now, "ablauf": now + SESSION_DAYS * 86400}
+        self.sessions[_hash(token)] = {"name": name, "erstellt": now, "ablauf": now + SESSION_DAYS * 86400}
         self._save_sessions()
         return token
 

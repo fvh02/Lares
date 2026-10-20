@@ -9,11 +9,13 @@ import asyncio
 import base64
 import json
 import logging
+import ipaddress
 import os
 import re
 import secrets
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import aiohttp
 from aiohttp import web
@@ -23,6 +25,7 @@ from .accounts import AccountError, Accounts
 from .bus import Bus, Busy, matches
 from .manifest import EVENT, ManifestError, parse
 from .notify import MAX_IMAGE, Notifier
+from .oidc import PROVIDERS, configured
 from .registry import Registry, Room
 from .remote import Remote
 from .runtime import ContainerError, ContainerRuntime, NoRuntime, room_container, service_container
@@ -325,18 +328,26 @@ async def admin_rooms(request: web.Request) -> web.Response:
 
 @routes.post("/api/v1/admin/rooms")
 async def admin_install(request: web.Request) -> web.Response:
-    """Installs or updates a room. The rights must be confirmed: without "rechte_bestaetigt" the answer lists them."""
+    """Installs or updates a room from {room_yaml} or {url} (also a GitHub link). The rights must be confirmed:
+    without "rechte_bestaetigt" the answer lists them (and returns the room.yaml it read)."""
     require_admin(request)
     data = await body_of(request)
+    text = str(data.get("room_yaml") or "")
+    if not text and data.get("url"):
+        try:
+            text = await fetch_room_yaml(core_of(request)["http"], str(data["url"]))
+        except ValueError as err:
+            return fail(str(err))
     try:
-        manifest = parse(str(data.get("room_yaml") or ""))
+        manifest = parse(text)
     except ManifestError as err:
         return fail(str(err))
     registry: Registry = core_of(request)["registry"]
     old = registry.get(manifest.id)
     rights = manifest.rechte.summary()
     if not data.get("rechte_bestaetigt") and (old is None or old.manifest.rechte != manifest.rechte):
-        return web.json_response({"bestaetigen": True, "room": manifest.id, "rechte": rights}, status=409)
+        return web.json_response({"bestaetigen": True, "room": manifest.id, "name": manifest.name,
+                                  "version": manifest.version, "rechte": rights, "room_yaml": text}, status=409)
     room = registry.install(manifest)
     out = {**room.info(), "neu": old is None}
     if room.active:
@@ -348,6 +359,48 @@ async def admin_install(request: web.Request) -> web.Response:
             out["token"] = token     # without a runtime the room is started by hand and needs its token
     log.info("%s %s %s", manifest.id, manifest.version, "installiert" if old is None else "aktualisiert")
     return web.json_response(out)
+
+
+MAX_ROOM_YAML = 256 * 1024
+GITHUB = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?:/(blob|tree)/([^/]+)(/.*)?)?/?$")
+
+
+def raw_url(url: str) -> str:
+    """A GitHub link (repository, folder or file) becomes the address of the raw room.yaml."""
+    match = GITHUB.match(url.strip())
+    if not match:
+        return url.strip()
+    owner, repo, kind, ref, path = match.groups()
+    path = (path or "").strip("/")
+    if kind != "blob" and not path.endswith((".yaml", ".yml")):
+        path = f"{path}/room.yaml".lstrip("/")
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref or 'HEAD'}/{path}"
+
+
+async def fetch_room_yaml(http: aiohttp.ClientSession, url: str) -> str:
+    """Loads a room.yaml from the internet – only over HTTPS and never from addresses inside the home network."""
+    url = raw_url(url)
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname:
+        raise ValueError("Bitte einen https-Link")
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(parts.hostname, parts.port or 443)
+    except OSError:
+        raise ValueError(f"{parts.hostname} nicht gefunden") from None
+    if any(not ipaddress.ip_address(i[4][0]).is_global for i in infos):
+        raise ValueError("Links ins Heimnetz sind nicht erlaubt")
+    try:
+        async with http.get(url, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status == 404:
+                raise ValueError("Dort liegt keine room.yaml (404)")
+            if resp.status >= 300:
+                raise ValueError(f"Abruf fehlgeschlagen ({resp.status})")
+            raw = await resp.content.read(MAX_ROOM_YAML + 1)
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        raise ValueError("Link nicht erreichbar") from None
+    if len(raw) > MAX_ROOM_YAML:
+        raise ValueError("Datei zu groß für eine room.yaml")
+    return raw.decode("utf-8", errors="replace")
 
 
 def admin_room(request: web.Request) -> Room:
@@ -621,6 +674,15 @@ async def admin_delete_account(request: web.Request) -> web.Response:
     return web.json_response(core_of(request)["accounts"].public())
 
 
+@routes.get("/api/v1/admin/anmeldung")
+async def admin_login_providers(request: web.Request) -> web.Response:
+    """Which logins with Apple and Google are set up, and which keys are missing."""
+    require_admin(request)
+    vault: Vault = core_of(request)["vault"]
+    return web.json_response({p: {"name": c["name"], "eingerichtet": configured(vault, p),
+                                  "fehlt": [k for k in c["keys"] if not vault.get(k)]} for p, c in PROVIDERS.items()})
+
+
 @routes.get("/api/v1/status")
 async def status(request: web.Request) -> web.Response:
     return web.json_response({"lares": __version__, "laufzeit": core_of(request)["runtime"].name})
@@ -666,6 +728,7 @@ def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: s
     app["runtime"] = runtime or NoRuntime()
     app["remote"] = Remote(core_dir, app["vault"], core_host, home_port, public_port)
     app["accounts"] = Accounts(core_dir)
+    app["atrium_state"] = {}        # passkey challenges and Apple/Google logins in progress
     app.add_routes(routes)
 
     async def on_startup(app: web.Application) -> None:

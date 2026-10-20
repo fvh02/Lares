@@ -4,8 +4,8 @@ Der zentrale Dienst von Lares. Er verwaltet die Rooms mit ihrer `room.yaml`, gib
 prüft jede Anfrage gegen die Rechte des Rooms. Daneben hält er den Schlüsseltresor, die Systemeinstellungen, die
 Benachrichtigungen, Ereignisse, Zeitpläne und Befehle bereit und leitet KI-Anfragen weiter.
 
-Version 0.3 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
-Tunnel und das Atrium mit Anmeldung.
+Version 0.4 gehört zu Etappe 1 und 2 aus dem [Konzept](../docs/KONZEPT.md): Fernzugriff mit Tailscale und Cloudflare
+Tunnel und das Atrium mit Anmeldung per Passwort, Passkey, Apple oder Google.
 
 ## Was schon geht
 
@@ -23,12 +23,12 @@ Tunnel und das Atrium mit Anmeldung.
 | Befehle | ein Room mit dem Recht `befehle` (z. B. der Assistent) ruft die Befehle der anderen Rooms auf |
 | KI | geht an den Room mit dem Recht `ki_anbieter` (der Assistent mit seiner claude.ai-Anmeldung), ohne API-Key; Anfragen werden pro Room gezählt |
 | Container | Docker oder Podman: Netz `lares`, Datenordner, RAM-Grenze, Neustart bei Absturz; das Token geht über stdin hinein, nicht über die Befehlszeile |
-| Atrium | Anmeldung (Passwort, optional Zwei-Faktor mit Authenticator-App), Startseite mit Room-Kacheln, Verwaltung von Rooms, Schlüsseln, System, Fernzugriff und Konten – im Browser auf Port 8000, auch auf dem Handy |
+| Atrium | Anmeldung mit Passwort (optional Zwei-Faktor), Passkey, Apple oder Google; Startseite mit Room-Kacheln; Rooms als Kacheln mit ⋯-Menü, hinzufügen per „+“ (Datei, Text, Link, GitHub); Schlüssel, System, Fernzugriff, Konten; Avatar-Menü mit „Mein Konto“ und „Abmelden“ – im Browser auf Port 8000, auch auf dem Handy |
 | Fernzugriff | Tailscale und Cloudflare Tunnel sind als Systemdienste eingebaut, siehe unten |
 | Gateways | Heim-Gateway (Port 8000) für alle Rooms mit Oberfläche unter `/r/<room>/`; Internet-Gateway (Port 8001, nur für cloudflared) nur für freigegebene Rooms, optional mit Zugangscode; HTTP, Uploads, Weiterleitungen und WebSockets |
 | Standort, Geräte | Schnittstelle und Rechte gibt es schon, die Antwort ist 503, bis der Device Core da ist (Etappe 3) |
 
-Noch nicht da sind Passkeys, Backups, Updates, der Room Store, der Device Core und das Kommandozeilen-Werkzeug `lares`.
+Noch nicht da sind Backups, Updates, der Room Store, der Device Core und das Kommandozeilen-Werkzeug `lares`.
 
 ## Starten
 
@@ -75,6 +75,19 @@ Anmeldung gibt. Diese Datei gehört niemandem sonst.
 - **Sitzungen:** Ein Cookie (HttpOnly, SameSite=Lax, über HTTPS Secure) gilt 30 Tage und verlängert sich bei Nutzung.
   Gespeichert wird nur sein Hash. Ändernde Anfragen müssen von der Atrium-Seite selbst kommen (Origin-Prüfung), und
   nach 10 Fehlversuchen pro Minute ist Pause.
+- **Passkeys:** Unter „Mein Konto“ anlegen (Face ID, Touch ID, Geräte-PIN), danach „Mit Passkey anmelden“ ohne Namen
+  und Passwort. Passkeys gehen nur über HTTPS, also über die Tailscale-Adresse, und gehören zu genau dieser Adresse.
+  Geprüft wird alles im Kern (Challenge, Ursprung, Adresse, Signatur, Zähler). Gespeichert wird nur der öffentliche
+  Schlüssel.
+- **Apple und Google:** Anmelden können sich nur Konten, die vorher unter „Mein Konto“ verbunden wurden. Ein Apple- oder
+  Google-Konto allein legt nie ein Lares-Konto an. Es gibt keine Anmeldung ohne HTTPS; die Rücksprung-Adresse ist
+  `https://<tailscale-adresse>/atrium/anmelden/google/zurueck` bzw. `…/apple/zurueck` (steht auch unter „Konten“).
+  - Google: in der Google Cloud Console einen OAuth-Client (Webanwendung) anlegen; Schlüssel `google_client_id` und
+    `google_client_secret`.
+  - Apple: braucht ein Apple-Developer-Konto. Eine Services ID mit „Sign in with Apple“ und einen Schlüssel (.p8)
+    anlegen; Schlüssel `apple_client_id` (Services ID), `apple_team_id`, `apple_key_id` und `apple_private_key`
+    (Inhalt der .p8-Datei).
+  - Lares prüft das Token des Anbieters selbst (Signatur, Aussteller, App, Ablauf, Nonce; bei Google zusätzlich PKCE).
 - **Rooms:** Ohne Anmeldung kommt niemand mehr an `/r/<room>/` – der Browser landet auf der Anmeldung und danach
   wieder im Room. Rooms bekommen `X-Lares-Benutzer` (URL-kodiert) und `X-Lares-Rolle`.
 - **Verwaltung:** Die Seiten nutzen dieselbe Admin-API wie `lares`; das Heim-Gateway reicht sie nur für Admins durch.
@@ -134,7 +147,8 @@ Für die Verwaltung (Admin-Token):
 
 | Methode und Pfad | Was |
 |---|---|
-| `GET/POST /api/v1/admin/rooms` | Liste; installieren/aktualisieren mit `{room_yaml, rechte_bestaetigt}` (ohne Bestätigung: 409 mit den Rechten) |
+| `GET/POST /api/v1/admin/rooms` | Liste; installieren/aktualisieren mit `{room_yaml}` oder `{url}` (auch GitHub-Links auf Repository, Ordner oder Datei; nur HTTPS, nie ins Heimnetz) und `rechte_bestaetigt` (ohne Bestätigung: 409 mit den Rechten) |
+| `GET /api/v1/admin/anmeldung` | ob Apple und Google eingerichtet sind und welche Schlüssel fehlen |
 | `DELETE /api/v1/admin/rooms/{id}?daten=loeschen` | entfernen (Daten bleiben sonst) |
 | `POST /api/v1/admin/rooms/{id}/start` · `/stop` · `/token` | starten, stoppen, neues Token (nur ohne Laufzeit) |
 | `GET/PUT /api/v1/admin/rooms/{id}/einstellungen` | Formular und Werte |
@@ -158,4 +172,6 @@ Die Tests starten den Kern, den Beispiel-Room `hallo` als eigenen Prozess und ei
 Einstellungen, Ereignisse zwischen Rooms, Schlüssel und Rechte, die KI-Weiterleitung, Benachrichtigungen mit
 Ruhezeit und Zeitpläne. Dazu kommen die Gateways mit einem Test-Room (Präfix, Weiterleitungen, Uploads, WebSockets,
 Freigaben, Zugangscode), die Container-Befehle für Tailscale und cloudflared sowie das Atrium (Einrichtung,
-Anmeldung mit Zwei-Faktor, Rollen, Origin-Prüfung, Sperre nach Fehlversuchen).
+Anmeldung mit Zwei-Faktor, Rollen, Origin-Prüfung, Sperre nach Fehlversuchen). Passkeys werden mit einem
+Software-Authenticator getestet (auch Wiederholung, fremde Adresse, fremder Schlüssel, Zähler), Apple/Google mit einem
+nachgebauten Anbieter (Signatur, Nonce, PKCE, nur verbundene Konten).
