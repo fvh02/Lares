@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17140f" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Lares Atrium</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 14 16 5l12 9v13H4z' fill='%23a0522d'/%3E%3Cpath d='M12 27v-8h8v8' fill='%23f6f1e7'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f1e7;--panel:#fffdf8;--fg:#221d16;--muted:#6f6555;--line:#e2d8c6;--accent:#a0522d;--accent-fg:#fff;
+  --ok:#2e7d4f;--warn:#b7791f;--bad:#b3261e;--shadow:0 1px 2px rgba(60,40,10,.06),0 4px 16px rgba(60,40,10,.06);
+  --radius:14px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#17140f;--panel:#211d17;--fg:#efe7da;--muted:#a89d8b;--line:#3a3328;--accent:#d98b5f;--accent-fg:#1b130c;
+  --ok:#6cc08b;--warn:#e0b252;--bad:#ef7b72;--shadow:none;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+a{color:var(--accent)}
+header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.bar{max-width:960px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-weight:650;letter-spacing:.02em;display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit}
+.brand svg{width:22px;height:22px}
+nav{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+nav a{padding:6px 10px;border-radius:8px;text-decoration:none;color:var(--muted);font-size:15px}
+nav a.on{background:var(--panel);color:var(--fg);box-shadow:var(--shadow)}
+main{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:26px;font-weight:650;margin:0 0 4px}
+h2{font-size:18px;font-weight:620;margin:28px 0 10px}
+p.lead{color:var(--muted);margin:0 0 24px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.tile{display:flex;flex-direction:column;gap:6px;min-height:120px;padding:16px;border-radius:var(--radius);background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);text-decoration:none;color:inherit;transition:transform .12s}
+.tile:hover{transform:translateY(-2px)}
+.tile .ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-weight:700;color:var(--accent-fg);background:var(--accent)}
+.tile b{font-weight:620}.tile small{color:var(--muted);font-size:13px;line-height:1.35}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin:0 0 12px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row>.grow{flex:1 1 200px;min-width:0}
+.muted{color:var(--muted)}.small{font-size:13px}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.pill.ok{color:var(--ok);border-color:currentColor}.pill.bad{color:var(--bad);border-color:currentColor}.pill.warn{color:var(--warn);border-color:currentColor}
+label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%}
+textarea{min-height:180px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+input[type=checkbox]{width:auto;margin-right:8px;accent-color:var(--accent)}
+.check{display:flex;align-items:center;color:var(--fg);font-size:15px;margin:12px 0 4px}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:10px;padding:8px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media (max-width:560px){.grid2{grid-template-columns:1fr}
+  nav{margin-left:0;width:calc(100% + 32px);margin:0 -16px;padding:0 16px 2px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}nav a{white-space:nowrap}}
+.auth{max-width:380px;margin:8vh auto 0}
+.msg{margin:10px 0 0;font-size:14px}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+pre.log{max-height:320px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;white-space:pre-wrap}
+details summary{cursor:pointer;color:var(--accent);margin-top:8px}
+ul.rights{margin:8px 0 0;padding-left:20px}
+.empty{padding:32px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--radius)}
+</style>
+</head>
+<body>
+<header id="head" hidden>
+  <div class="bar">
+    <a class="brand" href="#start"><svg viewBox="0 0 32 32"><path d="M4 14 16 5l12 9v13H4z" fill="var(--accent)"/><path d="M12 27v-8h8v8" fill="var(--bg)"/></svg>Lares</a>
+    <nav id="nav"></nav>
+  </div>
+</header>
+<main id="main"></main>
+<script>
+"use strict";
+const $main = document.getElementById("main");
+let me = null;
+
+// -- small helpers --------------------------------------------------------------------------------
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === false || v == null) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else if (k === "value") el.value = v;
+    else if (k === "checked") el.checked = !!v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : String(kid));
+  return el;
+}
+async function call(method, path, body) {
+  const res = await fetch(path, {method, credentials: "same-origin",
+    headers: body !== undefined ? {"Content-Type": "application/json"} : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined});
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (res.status === 401 && me && !path.startsWith("/atrium/anmelden")) { me = null; route(); }
+  if (!res.ok) { const err = new Error((data && data.fehler) || `Fehler ${res.status}`); err.status = res.status; err.data = data; throw err; }
+  return data;
+}
+const api = (m, p, b) => call(m, "/api/v1/admin" + p, b);
+function msg(el, text, ok) { el.textContent = text || ""; el.className = "msg " + (ok ? "ok" : "bad"); }
+function busy(btn, work) {
+  return async (ev) => { ev && ev.preventDefault(); btn.disabled = true; try { await work(); } finally { btn.disabled = false; } };
+}
+function field(label, input) { return h("div", {}, h("label", {}, label), input); }
+function pill(text, kind) { return h("span", {class: "pill " + (kind || "")}, text); }
+function initials(name) { return name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase(); }
+
+// -- routing --------------------------------------------------------------------------------------
+const PAGES = {
+  start: {title: "Start", render: pageStart},
+  rooms: {title: "Rooms", render: pageRooms, admin: true},
+  schluessel: {title: "Schlüssel", render: pageKeys, admin: true},
+  system: {title: "System", render: pageSystem, admin: true},
+  fernzugriff: {title: "Fernzugriff", render: pageRemote, admin: true},
+  konten: {title: "Konten", render: pageAccounts, admin: true},
+  konto: {title: "Mein Konto", render: pageMe},
+};
+async function route() {
+  if (!me) {
+    const st = await call("GET", "/atrium/zustand");
+    me = st.konto;
+    if (!st.eingerichtet) return pageSetup();
+    if (!me) return pageLogin();
+  }
+  let name = location.hash.slice(1) || "start";
+  if (!PAGES[name] || (PAGES[name].admin && me.rolle !== "admin")) name = "start";
+  document.getElementById("head").hidden = false;
+  const nav = document.getElementById("nav");
+  nav.replaceChildren(...Object.entries(PAGES).filter(([, p]) => !p.admin || me.rolle === "admin")
+    .map(([k, p]) => h("a", {href: "#" + k, class: k === name ? "on" : ""}, p.title)),
+    h("a", {href: "#", onclick: async (e) => { e.preventDefault(); await call("POST", "/atrium/abmelden"); me = null; location.hash = ""; route(); }}, "Abmelden"));
+  document.title = PAGES[name].title + " · Lares";
+  $main.replaceChildren(h("p", {class: "muted"}, "Lädt …"));
+  try { await PAGES[name].render(); }
+  catch (err) { $main.replaceChildren(h("div", {class: "card"}, h("p", {class: "msg bad"}, err.message))); }
+}
+window.addEventListener("hashchange", route);
+
+function afterLogin() {
+  const next = new URLSearchParams(location.search).get("weiter");
+  if (next && next.startsWith("/r/")) { location.href = next; return; }
+  history.replaceState(null, "", "/" + location.hash);
+  me = null; route();
+}
+
+// -- login and setup ------------------------------------------------------------------------------
+function pageSetup() {
+  document.getElementById("head").hidden = true;
+  const code = h("input", {autocomplete: "one-time-code", placeholder: "ABCD-EF12-3456"});
+  const name = h("input", {autocomplete: "username"});
+  const pw = h("input", {type: "password", autocomplete: "new-password"});
+  const out = h("p", {class: "msg"});
+  const btn = h("button", {class: "primary"}, "Einrichten");
+  const form = h("form", {class: "card"}, field("Einrichtungscode", code),
+    h("p", {class: "small muted"}, "Er steht im Log von Lares Core und in /data/core/setup.code."),
+    field("Dein Name", name), field("Passwort (mindestens 10 Zeichen)", pw), h("div", {class: "actions"}, btn), out);
+  form.addEventListener("submit", busy(btn, async () => {
+    try { await call("POST", "/atrium/einrichten", {code: code.value, name: name.value, passwort: pw.value}); afterLogin(); }
+    catch (err) { msg(out, err.message); }
+  }));
+  $main.replaceChildren(h("div", {class: "auth"}, h("h1", {}, "Willkommen bei Lares"),
+    h("p", {class: "lead"}, "Lege das erste Konto an. Es verwaltet das System."), form));
+  code.focus();
+}
+
+function pageLogin() {
+  document.getElementById("head").hidden = true;
+  const name = h("input", {autocomplete: "username"});
+  const pw = h("input", {type: "password", autocomplete: "current-password"});
+  const code = h("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123456"});
+  const codeBox = h("div", {hidden: true}, field("Code aus der Authenticator-App", code));
+  const out = h("p", {class: "msg"});
+  const btn = h("button", {class: "primary"}, "Anmelden");
+  const form = h("form", {class: "card"}, field("Name", name), field("Passwort", pw), codeBox,
+    h("div", {class: "actions"}, btn), out);
+  form.addEventListener("submit", busy(btn, async () => {
+    try { await call("POST", "/atrium/anmelden", {name: name.value, passwort: pw.value, code: code.value}); afterLogin(); }
+    catch (err) {
+      if (err.data && err.data.zwei_faktor) { codeBox.hidden = false; code.focus(); msg(out, ""); }
+      else msg(out, err.message);
+    }
+  }));
+  $main.replaceChildren(h("div", {class: "auth"}, h("h1", {}, "Lares"), h("p", {class: "lead"}, "Bitte anmelden."), form));
+  name.focus();
+}
+
+// -- start ----------------------------------------------------------------------------------------
+async function pageStart() {
+  const rooms = await call("GET", "/atrium/rooms");
+  const hour = new Date().getHours();
+  const hello = hour < 11 ? "Guten Morgen" : hour < 18 ? "Hallo" : "Guten Abend";
+  $main.replaceChildren(h("h1", {}, `${hello}, ${me.name}`), h("p", {class: "lead"}, "Deine Rooms"),
+    rooms.length ? h("div", {class: "tiles"}, rooms.map(r => h("a", {class: "tile", href: `/r/${encodeURIComponent(r.id)}/`},
+      h("span", {class: "ic"}, initials(r.name)), h("b", {}, r.name), h("small", {}, r.beschreibung || ""))))
+      : h("div", {class: "empty"}, me.rolle === "admin" ? "Noch keine Rooms mit Oberfläche – unter „Rooms“ installieren." : "Noch keine Rooms."));
+}
+
+// -- rooms ----------------------------------------------------------------------------------------
+async function pageRooms() {
+  const rooms = await api("GET", "/rooms");
+  const list = rooms.map(roomCard);
+  const yaml = h("textarea", {placeholder: "id: …\nname: …\nversion: 1.0.0\n…", spellcheck: "false"});
+  const out = h("div", {class: "msg"});
+  const btn = h("button", {class: "primary"}, "Prüfen und installieren");
+  btn.addEventListener("click", busy(btn, async () => install(yaml.value, false, out)));
+  $main.replaceChildren(h("h1", {}, "Rooms"), h("p", {class: "lead"}, "Installierte Rooms, ihre Einstellungen und Freigaben."),
+    list.length ? h("div", {}, list) : h("div", {class: "empty"}, "Noch keine Rooms installiert."),
+    h("h2", {}, "Room installieren"), h("div", {class: "card"}, h("p", {class: "small muted", style: "margin-top:0"},
+      "Den Inhalt der room.yaml einfügen. Der Room Store folgt."), yaml, h("div", {class: "actions"}, btn), out));
+}
+
+async function install(text, confirmed, out) {
+  try {
+    const res = await api("POST", "/rooms", {room_yaml: text, rechte_bestaetigt: confirmed});
+    out.replaceChildren(h("p", {class: "msg ok"}, `${res.name} ${res.version} ist installiert.`));
+    setTimeout(route, 800);
+  } catch (err) {
+    if (err.status === 409 && err.data && err.data.bestaetigen) {
+      const ok = h("button", {class: "primary"}, "Erlauben und installieren");
+      ok.addEventListener("click", busy(ok, () => install(text, true, out)));
+      out.className = "msg";
+      out.replaceChildren(h("div", {class: "card"}, h("b", {}, `${err.data.room} möchte:`),
+        err.data.rechte.length ? h("ul", {class: "rights"}, err.data.rechte.map(r => h("li", {}, r))) : h("p", {}, "keine besonderen Rechte"),
+        h("div", {class: "actions"}, ok)));
+    } else { out.replaceChildren(h("p", {class: "msg bad"}, err.message)); }
+  }
+}
+
+function roomCard(r) {
+  const state = r.verbunden ? pill("verbunden", "ok") : r.aktiv ? pill(r.container === "running" ? "läuft" : r.container, "warn") : pill("aus");
+  const body = h("div");
+  const toggle = h("button", {}, r.aktiv ? "Ausschalten" : "Einschalten");
+  toggle.addEventListener("click", busy(toggle, async () => { await api("POST", `/rooms/${r.id}/${r.aktiv ? "stop" : "start"}`); route(); }));
+  const settings = h("button", {}, "Einstellungen");
+  settings.addEventListener("click", busy(settings, () => roomSettings(r, body)));
+  const logs = h("button", {}, "Log");
+  logs.addEventListener("click", busy(logs, async () => body.replaceChildren(h("pre", {class: "log"}, (await call("GET", `/api/v1/admin/rooms/${r.id}/logs`)) || "(leer)"))));
+  const release = r.oeffentlich ? h("button", {}, "Internet") : null;
+  if (release) release.addEventListener("click", () => roomRelease(r, body));
+  const remove = h("button", {class: "danger"}, "Entfernen");
+  remove.addEventListener("click", busy(remove, async () => {
+    if (!confirm(`${r.name} entfernen? Die Daten bleiben erhalten.`)) return;
+    await api("DELETE", `/rooms/${r.id}`); route();
+  }));
+  return h("div", {class: "card"},
+    h("div", {class: "row"}, h("div", {class: "grow"}, h("b", {}, r.name), " ", h("span", {class: "muted small"}, r.version)), state,
+      r.freigabe ? pill("im Internet", "warn") : null),
+    r.beschreibung ? h("p", {class: "small muted", style: "margin:4px 0 0"}, r.beschreibung) : null,
+    r.rechte.length ? h("details", {}, h("summary", {class: "small"}, "Rechte"), h("ul", {class: "rights small"}, r.rechte.map(x => h("li", {}, x)))) : null,
+    h("div", {class: "actions"}, toggle, settings, logs, release, remove), body);
+}
+
+async function roomSettings(r, box) {
+  const data = await api("GET", `/rooms/${r.id}/einstellungen`);
+  if (!data.formular.length) { box.replaceChildren(h("p", {class: "small muted"}, "Dieser Room hat keine Einstellungen.")); return; }
+  const inputs = {};
+  const fields = data.formular.map(f => {
+    const v = data.werte[f.name];
+    if (f.typ === "bool") { inputs[f.name] = h("input", {type: "checkbox", checked: v}); return h("label", {class: "check"}, inputs[f.name], f.titel); }
+    if (f.typ === "auswahl") inputs[f.name] = h("select", {}, f.werte.map(w => h("option", {value: w, selected: w === v}, w)));
+    else inputs[f.name] = h("input", {type: f.typ === "text" ? "text" : "number", value: v ?? "", step: f.typ === "float" ? "any" : "1", min: f.min ?? false, max: f.max ?? false});
+    return field(f.titel, inputs[f.name]);
+  });
+  const out = h("p", {class: "msg"});
+  const save = h("button", {class: "primary"}, "Speichern");
+  save.addEventListener("click", busy(save, async () => {
+    const values = {};
+    for (const f of data.formular) values[f.name] = f.typ === "bool" ? inputs[f.name].checked : inputs[f.name].value;
+    try { await api("PUT", `/rooms/${r.id}/einstellungen`, values); msg(out, "Gespeichert.", true); } catch (err) { msg(out, err.message); }
+  }));
+  box.replaceChildren(h("div", {style: "margin-top:12px"}, fields, h("div", {class: "actions"}, save), out));
+}
+
+function roomRelease(r, box) {
+  const host = h("input", {placeholder: "spiele.example.de", value: (r.freigabe && r.freigabe.host) || ""});
+  const code = h("input", {type: "password", autocomplete: "new-password", placeholder: r.freigabe && r.freigabe.zugangscode ? "(gesetzt – leer lassen zum Behalten)" : "optional, mindestens 8 Zeichen"});
+  const out = h("p", {class: "msg"});
+  const save = h("button", {class: "primary"}, r.freigabe ? "Speichern" : "Freigeben");
+  save.addEventListener("click", busy(save, async () => {
+    const body = {host: host.value};
+    if (code.value) body.zugangscode = code.value;
+    try { await api("PUT", `/rooms/${r.id}/freigabe`, body); msg(out, "Gespeichert.", true); setTimeout(route, 600); } catch (err) { msg(out, err.message); }
+  }));
+  const withdraw = r.freigabe ? h("button", {class: "danger"}, "Freigabe zurückziehen") : null;
+  if (withdraw) withdraw.addEventListener("click", busy(withdraw, async () => { await api("DELETE", `/rooms/${r.id}/freigabe`); route(); }));
+  box.replaceChildren(h("div", {style: "margin-top:12px"},
+    h("p", {class: "small muted"}, "Über Cloudflare Tunnel aus dem Internet erreichbar. Im Tunnel die Adresse auf http://lares-core:8001 zeigen lassen."),
+    field("Eigene Adresse", host), field("Zugangscode", code), h("div", {class: "actions"}, save, withdraw), out));
+}
+
+// -- keys -----------------------------------------------------------------------------------------
+async function pageKeys() {
+  const keys = await api("GET", "/schluessel");
+  const rows = keys.map(k => {
+    const input = h("input", {type: "password", autocomplete: "off", placeholder: k.eingetragen ? "eingetragen – neuer Wert ersetzt ihn" : "Wert"});
+    const out = h("p", {class: "msg"});
+    const save = h("button", {class: "primary"}, "Speichern");
+    save.addEventListener("click", busy(save, async () => {
+      try { await api("PUT", `/schluessel/${k.name}`, {wert: input.value}); input.value = ""; msg(out, "Gespeichert.", true); setTimeout(route, 600); }
+      catch (err) { msg(out, err.message); }
+    }));
+    const del = k.eingetragen ? h("button", {class: "danger"}, "Löschen") : null;
+    if (del) del.addEventListener("click", busy(del, async () => { if (confirm(`${k.name} löschen?`)) { await api("DELETE", `/schluessel/${k.name}`); route(); } }));
+    return h("div", {class: "card"}, h("div", {class: "row"}, h("b", {class: "grow"}, k.name), k.eingetragen ? pill("eingetragen", "ok") : pill("fehlt", "warn")),
+      k.rooms.length ? h("p", {class: "small muted", style: "margin:4px 0 0"}, "Genutzt von: " + k.rooms.join(", ")) : null,
+      h("div", {class: "row", style: "margin-top:10px"}, h("div", {class: "grow"}, input), save, del), out);
+  });
+  const name = h("input", {placeholder: "z. B. tvmaze_key"});
+  const value = h("input", {type: "password", autocomplete: "off"});
+  const out = h("p", {class: "msg"});
+  const add = h("button", {class: "primary"}, "Hinzufügen");
+  add.addEventListener("click", busy(add, async () => {
+    try { await api("PUT", `/schluessel/${encodeURIComponent(name.value.trim())}`, {wert: value.value}); route(); } catch (err) { msg(out, err.message); }
+  }));
+  $main.replaceChildren(h("h1", {}, "Schlüssel"), h("p", {class: "lead"}, "API-Keys, Passwörter und Tokens. Sie werden verschlüsselt gespeichert und nie wieder angezeigt."),
+    h("div", {}, rows), h("h2", {}, "Weiterer Schlüssel"), h("div", {class: "card grid2"}, h("div", {}, field("Name", name)), h("div", {}, field("Wert", value)),
+      h("div", {class: "actions"}, add), out));
+}
+
+// -- system ---------------------------------------------------------------------------------------
+async function pageSystem() {
+  const s = await api("GET", "/system");
+  const place = s.wohnort || {};
+  const pname = h("input", {value: place.name || ""}), lat = h("input", {inputmode: "decimal", value: place.lat ?? ""}), lon = h("input", {inputmode: "decimal", value: place.lon ?? ""});
+  const tz = h("input", {value: s.zeitzone}), lang = h("input", {value: s.sprache});
+  const quietOn = h("input", {type: "checkbox", checked: !!s.ruhezeit});
+  const from = h("input", {type: "number", min: 0, max: 23, value: s.ruhezeit ? s.ruhezeit.von : 22});
+  const to = h("input", {type: "number", min: 0, max: 23, value: s.ruhezeit ? s.ruhezeit.bis : 7});
+  const people = h("div");
+  const addPerson = (p) => {
+    const n = h("input", {placeholder: "Name", value: p.name || ""}), t = h("input", {placeholder: "+4917012345678", value: p.telefon || "", inputmode: "tel"});
+    const rm = h("button", {class: "danger", onclick: () => row.remove()}, "×");
+    const row = h("div", {class: "row", style: "margin-bottom:8px"}, h("div", {class: "grow"}, n), h("div", {class: "grow"}, t), rm);
+    row._get = () => ({name: n.value, telefon: t.value});
+    people.append(row);
+  };
+  (s.bewohner.length ? s.bewohner : [{}]).forEach(addPerson);
+  const here = h("button", {}, "Aktuellen Standort nehmen");
+  here.addEventListener("click", () => navigator.geolocation && navigator.geolocation.getCurrentPosition(p => { lat.value = p.coords.latitude.toFixed(5); lon.value = p.coords.longitude.toFixed(5); }));
+  const out = h("p", {class: "msg"});
+  const save = h("button", {class: "primary"}, "Speichern");
+  save.addEventListener("click", busy(save, async () => {
+    const body = {zeitzone: tz.value, sprache: lang.value, ruhezeit: quietOn.checked ? {von: +from.value, bis: +to.value} : null,
+      bewohner: [...people.children].map(r => r._get()).filter(p => p.name || p.telefon),
+      wohnort: lat.value && lon.value ? {name: pname.value, lat: lat.value, lon: lon.value} : null};
+    try { await api("PUT", "/system", body); msg(out, "Gespeichert.", true); } catch (err) { msg(out, err.message); }
+  }));
+  const test = h("button", {}, "Testnachricht senden");
+  const testOut = h("p", {class: "msg"});
+  test.addEventListener("click", busy(test, async () => { try { await api("POST", "/test/melden"); msg(testOut, "Gesendet.", true); } catch (err) { msg(testOut, err.message); } }));
+  $main.replaceChildren(h("h1", {}, "System"), h("p", {class: "lead"}, "Wohnort, Zeit, Bewohner und Ruhezeit."),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Wohnort"), field("Name", pname), h("div", {class: "grid2"}, h("div", {}, field("Breitengrad", lat)), h("div", {}, field("Längengrad", lon))), h("div", {class: "actions"}, here)),
+    h("div", {class: "card grid2"}, h("div", {}, field("Zeitzone", tz)), h("div", {}, field("Sprache", lang))),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Bewohner"), h("p", {class: "small muted"}, "Nachrichten gehen an die erste Person mit Handynummer."), people,
+      h("button", {onclick: () => addPerson({})}, "Person hinzufügen")),
+    h("div", {class: "card"}, h("label", {class: "check"}, quietOn, "Ruhezeit – Nachrichten warten bis zum Ende"), h("div", {class: "grid2"}, h("div", {}, field("Von (Uhr)", from)), h("div", {}, field("Bis (Uhr)", to)))),
+    h("div", {class: "actions"}, save, test), out, testOut);
+}
+
+// -- remote access --------------------------------------------------------------------------------
+async function pageRemote() {
+  const r = await api("GET", "/fernzugriff");
+  const ts = r.tailscale, cf = r.cloudflared;
+  const state = (s) => s.container === "running" ? pill("läuft", "ok") : s.aktiv ? pill(s.container, "bad") : pill("aus");
+
+  const tsOn = h("input", {type: "checkbox", checked: ts.aktiv});
+  const tsHost = h("input", {value: ts.hostname});
+  const tsRoutes = h("input", {value: ts.routen.join(", "), placeholder: "z. B. 192.168.178.0/24"});
+  const tsExit = h("input", {type: "checkbox", checked: ts.exit_node});
+  const tsOut = h("p", {class: "msg"});
+  const tsSave = h("button", {class: "primary"}, "Speichern");
+  tsSave.addEventListener("click", busy(tsSave, async () => {
+    try { await api("PUT", "/fernzugriff/tailscale", {aktiv: tsOn.checked, hostname: tsHost.value, exit_node: tsExit.checked,
+      routen: tsRoutes.value.split(/[\s,]+/).filter(Boolean)}); msg(tsOut, "Gespeichert.", true); setTimeout(route, 1500); }
+    catch (err) { msg(tsOut, err.message); }
+  }));
+
+  const cfOn = h("input", {type: "checkbox", checked: cf.aktiv});
+  const cfOut = h("p", {class: "msg"});
+  const cfSave = h("button", {class: "primary"}, "Speichern");
+  cfSave.addEventListener("click", busy(cfSave, async () => {
+    try { await api("PUT", "/fernzugriff/cloudflared", {aktiv: cfOn.checked}); msg(cfOut, "Gespeichert.", true); setTimeout(route, 1500); }
+    catch (err) { msg(cfOut, err.message); }
+  }));
+  const releases = Object.entries(r.freigaben);
+
+  $main.replaceChildren(h("h1", {}, "Fernzugriff"), h("p", {class: "lead"}, "Tailscale für deine Geräte, Cloudflare Tunnel für Rooms im Internet."),
+    h("div", {class: "card"}, h("div", {class: "row"}, h("h2", {class: "grow", style: "margin:0"}, "Tailscale"), state(ts)),
+      h("p", {class: "small muted"}, "Privat: nur deine Geräte im Tailnet. Lares ist dann unter https://", ts.hostname, ".<tailnet>.ts.net erreichbar."),
+      ts.anmelden ? h("p", {}, h("a", {href: ts.anmelden, target: "_blank", rel: "noopener"}, "Jetzt bei Tailscale anmelden →")) : null,
+      !ts.schluessel ? h("p", {class: "small muted"}, "Ohne Schlüssel tailscale_authkey erscheint nach dem Einschalten hier ein Anmelde-Link.") : null,
+      h("label", {class: "check"}, tsOn, "Eingeschaltet"), field("Gerätename", tsHost), field("Heimnetz von unterwegs (Routen)", tsRoutes),
+      h("label", {class: "check"}, tsExit, "Als Exit-Node anbieten"), h("div", {class: "actions"}, tsSave), tsOut),
+    h("div", {class: "card"}, h("div", {class: "row"}, h("h2", {class: "grow", style: "margin:0"}, "Cloudflare Tunnel"), state(cf)),
+      h("p", {class: "small muted"}, "Internet: nur freigegebene Rooms. Im Cloudflare-Dashboard jede Adresse auf ", h("code", {}, cf.ziel), " zeigen lassen."),
+      !cf.schluessel ? h("p", {class: "msg bad"}, "Schlüssel cloudflare_tunnel_token fehlt – unter „Schlüssel“ eintragen.") : null,
+      h("label", {class: "check"}, cfOn, "Eingeschaltet"), h("div", {class: "actions"}, cfSave), cfOut,
+      h("h2", {}, "Freigegebene Rooms"), releases.length ? h("ul", {}, releases.map(([id, f]) => h("li", {}, id, f.host ? ` – ${f.host}` : "", f.zugangscode ? " (mit Zugangscode)" : "")))
+        : h("p", {class: "small muted"}, "Keine – unter „Rooms“ → „Internet“ freigeben.")));
+}
+
+// -- accounts -------------------------------------------------------------------------------------
+async function pageAccounts() {
+  const list = await api("GET", "/konten");
+  const rows = list.map(a => {
+    const role = h("select", {}, ["admin", "bewohner"].map(x => h("option", {value: x, selected: x === a.rolle}, x === "admin" ? "Admin" : "Bewohner")));
+    const out = h("p", {class: "msg"});
+    role.addEventListener("change", async () => { try { await api("PUT", `/konten/${encodeURIComponent(a.name)}`, {rolle: role.value}); msg(out, "Gespeichert.", true); } catch (err) { msg(out, err.message); role.value = a.rolle; } });
+    const reset = h("button", {}, "Neues Passwort");
+    reset.addEventListener("click", busy(reset, async () => {
+      const pw = prompt(`Neues Passwort für ${a.name} (mindestens 10 Zeichen):`);
+      if (!pw) return;
+      try { await api("PUT", `/konten/${encodeURIComponent(a.name)}`, {passwort: pw}); msg(out, "Passwort gesetzt, Sitzungen beendet.", true); } catch (err) { msg(out, err.message); }
+    }));
+    const del = a.name === me.name ? null : h("button", {class: "danger"}, "Löschen");
+    if (del) del.addEventListener("click", busy(del, async () => { if (confirm(`${a.name} löschen?`)) { try { await api("DELETE", `/konten/${encodeURIComponent(a.name)}`); route(); } catch (err) { msg(out, err.message); } } }));
+    return h("div", {class: "card"}, h("div", {class: "row"}, h("b", {class: "grow"}, a.name), a.zwei_faktor ? pill("2FA", "ok") : null, role, reset, del), out);
+  });
+  const name = h("input"), pw = h("input", {type: "password", autocomplete: "new-password"});
+  const role = h("select", {}, h("option", {value: "bewohner"}, "Bewohner"), h("option", {value: "admin"}, "Admin"));
+  const out = h("p", {class: "msg"});
+  const add = h("button", {class: "primary"}, "Anlegen");
+  add.addEventListener("click", busy(add, async () => { try { await api("POST", "/konten", {name: name.value, passwort: pw.value, rolle: role.value}); route(); } catch (err) { msg(out, err.message); } }));
+  $main.replaceChildren(h("h1", {}, "Konten"), h("p", {class: "lead"}, "Admins verwalten das System, Bewohner öffnen die Rooms."), h("div", {}, rows),
+    h("h2", {}, "Neues Konto"), h("div", {class: "card"}, h("div", {class: "grid2"}, h("div", {}, field("Name", name)), h("div", {}, field("Passwort", pw))),
+      field("Rolle", role), h("div", {class: "actions"}, add), out));
+}
+
+// -- my account -----------------------------------------------------------------------------------
+async function pageMe() {
+  const tf = await call("GET", "/atrium/zwei-faktor");
+  const old = h("input", {type: "password", autocomplete: "current-password"}), neu = h("input", {type: "password", autocomplete: "new-password"});
+  const pwOut = h("p", {class: "msg"});
+  const pwSave = h("button", {class: "primary"}, "Passwort ändern");
+  pwSave.addEventListener("click", busy(pwSave, async () => { try { await call("POST", "/atrium/passwort", {alt: old.value, neu: neu.value}); old.value = neu.value = ""; msg(pwOut, "Geändert.", true); } catch (err) { msg(pwOut, err.message); } }));
+
+  const tfBox = h("div");
+  const tfOut = h("p", {class: "msg"});
+  if (tf.aktiv) {
+    const pw = h("input", {type: "password", autocomplete: "current-password"});
+    const off = h("button", {class: "danger"}, "Zwei-Faktor ausschalten");
+    off.addEventListener("click", busy(off, async () => { try { await call("POST", "/atrium/zwei-faktor/aus", {passwort: pw.value}); route(); } catch (err) { msg(tfOut, err.message); } }));
+    tfBox.append(h("p", {}, pill("eingeschaltet", "ok")), field("Passwort zum Ausschalten", pw), h("div", {class: "actions"}, off));
+  } else {
+    const start = h("button", {class: "primary"}, "Zwei-Faktor einrichten");
+    start.addEventListener("click", busy(start, async () => {
+      const s = await call("POST", "/atrium/zwei-faktor/start");
+      const code = h("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123456"});
+      const ok = h("button", {class: "primary"}, "Bestätigen");
+      ok.addEventListener("click", busy(ok, async () => { try { await call("POST", "/atrium/zwei-faktor/bestaetigen", {code: code.value}); route(); } catch (err) { msg(tfOut, err.message); } }));
+      tfBox.replaceChildren(h("p", {}, "Auf dem iPhone den Link öffnen (Passwörter-App) oder das Geheimnis in einer Authenticator-App eintragen:"),
+        h("p", {}, h("a", {href: s.link}, "In Authenticator-App öffnen →")), h("p", {class: "small"}, h("code", {}, s.geheimnis)),
+        field("Code aus der App", code), h("div", {class: "actions"}, ok));
+    }));
+    tfBox.append(h("p", {class: "small muted"}, "Beim Anmelden wird zusätzlich ein Code aus der App abgefragt."), h("div", {class: "actions"}, start));
+  }
+  $main.replaceChildren(h("h1", {}, me.name), h("p", {class: "lead"}, me.rolle === "admin" ? "Admin" : "Bewohner"),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Passwort"), field("Bisheriges Passwort", old), field("Neues Passwort", neu), h("div", {class: "actions"}, pwSave), pwOut),
+    h("div", {class: "card"}, h("h2", {style: "margin-top:0"}, "Zwei-Faktor-Anmeldung"), tfBox, tfOut));
+}
+
+route();
+</script>
+</body>
+</html>

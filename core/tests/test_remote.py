@@ -149,7 +149,9 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
         await self.serve(self.core)
         self.home = f"http://127.0.0.1:{await self.serve(Gateway(self.core, public=False).app())}"
         self.public = f"http://127.0.0.1:{await self.serve(Gateway(self.core, public=True).app())}"
-        self.http = aiohttp.ClientSession()
+        self.core["accounts"].create("Fabian", "langes-passwort", "admin")
+        token = self.core["accounts"].login("Fabian", "langes-passwort")
+        self.http = aiohttp.ClientSession(cookies={"lares_sitzung": token})
 
     async def asyncTearDown(self):
         await self.http.close()
@@ -170,9 +172,6 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
             return resp.status, resp.headers, await resp.text()
 
     async def test_home_gateway(self):
-        status, _, body = await self.get(self.home + "/")
-        self.assertEqual(status, 200)
-        self.assertIn("/r/web/", body)
         status, headers, _ = await self.get(self.home + "/r/web")
         self.assertEqual((status, headers["Location"]), (302, "/r/web/"))
         status, _, body = await self.get(self.home + "/r/privat/a/b?x=1", headers={"X-Lares-Zugang": "extern",
@@ -182,6 +181,7 @@ class GatewayTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["kopf"]["X-Lares-Zugang"], "heim")
         self.assertEqual(data["kopf"]["X-Ingress-Path"], "/r/privat")
         self.assertEqual(data["kopf"]["X-Lares-Prefix"], "/r/privat")
+        self.assertEqual((data["kopf"]["X-Lares-Benutzer"], data["kopf"]["X-Lares-Rolle"]), ("Fabian", "admin"))
         status, headers, _ = await self.get(self.home + "/r/web/weiter")
         self.assertEqual(headers["Location"], "/r/web/ziel")
         async with self.http.post(self.home + "/r/web/hoch", data=io.BytesIO(b"x" * 3_000_000)) as resp:

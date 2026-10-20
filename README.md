@@ -20,10 +20,10 @@ Konzept: [docs/KONZEPT.md](docs/KONZEPT.md)
 
 | Ordner | Was |
 |---|---|
-| [`core/`](core/README.md) | **Lares Core** – der zentrale Dienst (Version 0.2) |
+| [`core/`](core/README.md) | **Lares Core** – der zentrale Dienst (Version 0.3) |
 | [`sdk/python/`](sdk/python/README.md) | das SDK für Rooms: `from lares import room` |
 | [`examples/hallo/`](examples/hallo) | ein Beispiel-Room |
 
 Status: Etappe 1 begonnen – Room-Format, Tokens und Rechte, Tresor, Benachrichtigungen, Ereignisse, Zeitpläne,
-Befehle, KI-Weiterleitung, SDK sowie Fernzugriff mit Tailscale und Cloudflare Tunnel laufen. Atrium, Device Core
-und Lares-Image folgen.
+Befehle, KI-Weiterleitung, SDK, Fernzugriff mit Tailscale und Cloudflare Tunnel sowie das Atrium mit Anmeldung
+laufen. Room Store, Device Core und Lares-Image folgen.

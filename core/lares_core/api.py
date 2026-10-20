@@ -19,6 +19,7 @@ import aiohttp
 from aiohttp import web
 
 from . import __version__, storage
+from .accounts import AccountError, Accounts
 from .bus import Bus, Busy, matches
 from .manifest import EVENT, ManifestError, parse
 from .notify import MAX_IMAGE, Notifier
@@ -63,7 +64,7 @@ def bearer(request: web.Request) -> str:
 
 
 def room_of(request: web.Request) -> Room:
-    room = request.app["registry"].room_for_token(bearer(request))
+    room = core_of(request)["registry"].room_for_token(bearer(request))
     if room is None:
         raise web.HTTPUnauthorized(text=json.dumps({"fehler": "Token unbekannt"}), content_type="application/json")
     if not room.active:
@@ -71,8 +72,19 @@ def room_of(request: web.Request) -> Room:
     return room
 
 
+def core_of(request: web.Request) -> web.Application:
+    """The core app – also when an admin route is served by the home gateway for the Atrium."""
+    return request.app.get("core", request.app)
+
+
 def require_admin(request: web.Request) -> None:
-    if not secrets.compare_digest(bearer(request).encode(), request.app["admin_token"].encode()):
+    """The admin token (lares command) or an Atrium session of an admin."""
+    account = request.get("konto")
+    if account and account["rolle"] == "admin":
+        return
+    if account:
+        raise deny("Nur für Admins")
+    if not secrets.compare_digest(bearer(request).encode(), core_of(request)["admin_token"].encode()):
         raise web.HTTPUnauthorized(text=json.dumps({"fehler": "Admin-Token nötig"}), content_type="application/json")
 
 
@@ -96,7 +108,7 @@ async def settings(request: web.Request) -> web.Response:
 @routes.get("/api/v1/system")
 async def system(request: web.Request) -> web.Response:
     room_of(request)
-    return web.json_response(request.app["system"].public())
+    return web.json_response(core_of(request)["system"].public())
 
 
 @routes.get("/api/v1/schluessel/{name}")
@@ -104,7 +116,7 @@ async def key(request: web.Request) -> web.Response:
     room, name = room_of(request), request.match_info["name"]
     if name not in room.manifest.rechte.schluessel:
         raise deny(f"{room.manifest.name} darf den Schlüssel {name} nicht lesen")
-    value = request.app["vault"].get(name)
+    value = core_of(request)["vault"].get(name)
     if not value:
         return fail(f"Schlüssel {name} ist nicht eingetragen", 404)
     log.info("Schlüssel %s an %s ausgegeben", name, room.id)
@@ -116,7 +128,7 @@ async def notify(request: web.Request) -> web.Response:
     room = room_of(request)
     if not room.manifest.rechte.benachrichtigen:
         raise deny(f"{room.manifest.name} darf keine Nachrichten schicken")
-    notifier: Notifier = request.app["notifier"]
+    notifier: Notifier = core_of(request)["notifier"]
     if not notifier.limit.ok(room.id):
         return fail("Zu viele Nachrichten – höchstens 20 pro Minute", 429)
     data = await body_of(request)
@@ -149,17 +161,17 @@ async def ai(request: web.Request) -> web.Response:
     question = str(data.get("frage") or "").strip()
     if not question:
         return fail("Keine Frage")
-    registry: Registry = request.app["registry"]
-    bus: Bus = request.app["bus"]
+    registry: Registry = core_of(request)["registry"]
+    bus: Bus = core_of(request)["bus"]
     provider = next((r for r in registry.rooms.values() if r.active and r.manifest.rechte.ki_anbieter
                      and r.id != room.id and bus.connected(r.id)), None)
     if provider is None:
         return fail("Kein KI-Room verbunden – die KI läuft über einen Room mit dem Recht ki_anbieter "
                     "(z. B. den Assistenten)", 503)
-    usage = request.app["ai_usage"].setdefault(room.id, {"anfragen": 0, "zeichen": 0})
+    usage = core_of(request)["ai_usage"].setdefault(room.id, {"anfragen": 0, "zeichen": 0})
     usage["anfragen"] += 1
     usage["zeichen"] += len(question)
-    storage.save(request.app["core_dir"] / "ki.json", request.app["ai_usage"])
+    storage.save(core_of(request)["core_dir"] / "ki.json", core_of(request)["ai_usage"])
     try:
         result = await bus.request(provider.id, {"typ": "ki", "von": room.id, "frage": question[:200_000],
                                                  "schema": data.get("schema")}, AI_TIMEOUT)
@@ -198,7 +210,7 @@ async def send_event(request: web.Request) -> web.Response:
     payload = data.get("daten") or {}
     if not isinstance(payload, dict) or len(json.dumps(payload)) > 64_000:
         return fail("daten: ein JSON-Objekt bis 64 KB")
-    event = request.app["bus"].publish(room.id, name, payload)
+    event = core_of(request)["bus"].publish(room.id, name, payload)
     return web.json_response({"nr": event["nr"]})
 
 
@@ -210,7 +222,7 @@ async def recent_events(request: web.Request) -> web.Response:
     except ValueError:
         return fail("seit: eine Nummer")
     rights = room.manifest.rechte.ereignisse_empfangen
-    return web.json_response([e for e in request.app["bus"].recent if e["nr"] > since and matches(e["name"], rights)])
+    return web.json_response([e for e in core_of(request)["bus"].recent if e["nr"] > since and matches(e["name"], rights)])
 
 
 @routes.get("/api/v1/strom")
@@ -222,7 +234,7 @@ async def stream(request: web.Request) -> web.StreamResponse:
     response = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache",
                                            "X-Accel-Buffering": "no"})
     await response.prepare(request)
-    bus: Bus = request.app["bus"]
+    bus: Bus = core_of(request)["bus"]
     conn = bus.connect(room.id, patterns)
     log.info("%s verbunden (Abos: %s)", room.id, ", ".join(patterns) or "keine")
     try:
@@ -248,7 +260,7 @@ async def stream_answer(request: web.Request) -> web.Response:
     room = room_of(request)
     data = await body_of(request)
     result = {"fehler": str(data["fehler"])} if data.get("fehler") else {"ergebnis": data.get("ergebnis")}
-    if not request.app["bus"].answer(room.id, str(data.get("id") or ""), result):
+    if not core_of(request)["bus"].answer(room.id, str(data.get("id") or ""), result):
         return fail("Keine offene Anfrage mit dieser id", 404)
     return web.json_response({"ok": True})
 
@@ -258,11 +270,11 @@ async def commands(request: web.Request) -> web.Response:
     room = room_of(request)
     if not room.manifest.rechte.befehle:
         raise deny(f"{room.manifest.name} darf keine Befehle anderer Rooms nutzen")
-    bus: Bus = request.app["bus"]
+    bus: Bus = core_of(request)["bus"]
     return web.json_response([
         {"room": r.id, "name": r.manifest.name, "verbunden": bus.connected(r.id),
          "befehle": [vars(c) for c in r.manifest.befehle]}
-        for r in request.app["registry"].rooms.values() if r.active and r.manifest.befehle and r.id != room.id])
+        for r in core_of(request)["registry"].rooms.values() if r.active and r.manifest.befehle and r.id != room.id])
 
 
 @routes.post("/api/v1/befehle/{room}/{name}")
@@ -270,7 +282,7 @@ async def run_command(request: web.Request) -> web.Response:
     room = room_of(request)
     if not room.manifest.rechte.befehle:
         raise deny(f"{room.manifest.name} darf keine Befehle anderer Rooms nutzen")
-    target = request.app["registry"].get(request.match_info["room"])
+    target = core_of(request)["registry"].get(request.match_info["room"])
     name = request.match_info["name"]
     if target is None or not target.active or target.id == room.id:
         return fail("Room nicht installiert oder ausgeschaltet", 404)
@@ -282,7 +294,7 @@ async def run_command(request: web.Request) -> web.Response:
     if not isinstance(args, dict) or set(args) - set(command.argumente):
         return fail(f"argumente: nur {', '.join(command.argumente) or 'keine'}")
     try:
-        result = await request.app["bus"].request(target.id, {"typ": "befehl", "von": room.id, "name": name,
+        result = await core_of(request)["bus"].request(target.id, {"typ": "befehl", "von": room.id, "name": name,
                                                               "argumente": args}, COMMAND_TIMEOUT)
     except Busy as err:
         return fail(f"{target.manifest.name}: {err}", 503)
@@ -302,12 +314,12 @@ async def start_room(app: web.Application, room: Room) -> str:
 @routes.get("/api/v1/admin/rooms")
 async def admin_rooms(request: web.Request) -> web.Response:
     require_admin(request)
-    bus: Bus = request.app["bus"]
+    bus: Bus = core_of(request)["bus"]
     out = []
-    for room in request.app["registry"].rooms.values():
+    for room in core_of(request)["registry"].rooms.values():
         out.append({**room.info(), "verbunden": bus.connected(room.id),
-                    "container": await request.app["runtime"].status(room_container(room.id)),
-                    "freigabe": request.app["remote"].public_release(room.id)})
+                    "container": await core_of(request)["runtime"].status(room_container(room.id)),
+                    "freigabe": core_of(request)["remote"].public_release(room.id)})
     return web.json_response(out)
 
 
@@ -320,7 +332,7 @@ async def admin_install(request: web.Request) -> web.Response:
         manifest = parse(str(data.get("room_yaml") or ""))
     except ManifestError as err:
         return fail(str(err))
-    registry: Registry = request.app["registry"]
+    registry: Registry = core_of(request)["registry"]
     old = registry.get(manifest.id)
     rights = manifest.rechte.summary()
     if not data.get("rechte_bestaetigt") and (old is None or old.manifest.rechte != manifest.rechte):
@@ -329,10 +341,10 @@ async def admin_install(request: web.Request) -> web.Response:
     out = {**room.info(), "neu": old is None}
     if room.active:
         try:
-            token = await start_room(request.app, room)
+            token = await start_room(core_of(request), room)
         except ContainerError as err:
             return fail(f"Installiert, aber nicht gestartet: {err}", 502)
-        if isinstance(request.app["runtime"], NoRuntime):
+        if isinstance(core_of(request)["runtime"], NoRuntime):
             out["token"] = token     # without a runtime the room is started by hand and needs its token
     log.info("%s %s %s", manifest.id, manifest.version, "installiert" if old is None else "aktualisiert")
     return web.json_response(out)
@@ -340,7 +352,7 @@ async def admin_install(request: web.Request) -> web.Response:
 
 def admin_room(request: web.Request) -> Room:
     require_admin(request)
-    room = request.app["registry"].get(request.match_info["room"])
+    room = core_of(request)["registry"].get(request.match_info["room"])
     if room is None:
         raise web.HTTPNotFound(text=json.dumps({"fehler": "Room nicht installiert"}), content_type="application/json")
     return room
@@ -349,27 +361,27 @@ def admin_room(request: web.Request) -> Room:
 @routes.delete("/api/v1/admin/rooms/{room}")
 async def admin_remove(request: web.Request) -> web.Response:
     room = admin_room(request)
-    await request.app["runtime"].remove(room_container(room.id))
-    request.app["registry"].remove(room.id, keep_data=request.query.get("daten") != "loeschen")
-    request.app["remote"].release(room.id, None)
+    await core_of(request)["runtime"].remove(room_container(room.id))
+    core_of(request)["registry"].remove(room.id, keep_data=request.query.get("daten") != "loeschen")
+    core_of(request)["remote"].release(room.id, None)
     return web.json_response({"entfernt": room.id})
 
 
 @routes.post("/api/v1/admin/rooms/{room}/{action:start|stop}")
 async def admin_start_stop(request: web.Request) -> web.Response:
     room = admin_room(request)
-    registry: Registry = request.app["registry"]
+    registry: Registry = core_of(request)["registry"]
     if request.match_info["action"] == "stop":
         registry.set_active(room.id, False)
-        await request.app["runtime"].stop(room_container(room.id))
+        await core_of(request)["runtime"].stop(room_container(room.id))
         return web.json_response({"aktiv": False})
     registry.set_active(room.id, True)
     try:
-        token = await start_room(request.app, room)
+        token = await start_room(core_of(request), room)
     except ContainerError as err:
         return fail(str(err), 502)
     out = {"aktiv": True}
-    if isinstance(request.app["runtime"], NoRuntime):
+    if isinstance(core_of(request)["runtime"], NoRuntime):
         out["token"] = token
     return web.json_response(out)
 
@@ -378,9 +390,9 @@ async def admin_start_stop(request: web.Request) -> web.Response:
 async def admin_token(request: web.Request) -> web.Response:
     """A new token for a room started by hand (development); the old one stops working."""
     room = admin_room(request)
-    if not isinstance(request.app["runtime"], NoRuntime):
+    if not isinstance(core_of(request)["runtime"], NoRuntime):
         return fail("Nur ohne Container-Laufzeit – sonst bekommt der Room sein Token beim Start")
-    return web.json_response({"token": request.app["registry"].issue_token(room.id)})
+    return web.json_response({"token": core_of(request)["registry"].issue_token(room.id)})
 
 
 @routes.get("/api/v1/admin/rooms/{room}/einstellungen")
@@ -395,29 +407,29 @@ async def admin_settings(request: web.Request) -> web.Response:
 async def admin_set_settings(request: web.Request) -> web.Response:
     room = admin_room(request)
     try:
-        values = request.app["registry"].set_settings(room.id, await body_of(request))
+        values = core_of(request)["registry"].set_settings(room.id, await body_of(request))
     except ManifestError as err:
         return fail(str(err))
-    request.app["bus"].tell(room.id, {"typ": "einstellungen", "werte": values})
+    core_of(request)["bus"].tell(room.id, {"typ": "einstellungen", "werte": values})
     return web.json_response(values)
 
 
 @routes.get("/api/v1/admin/rooms/{room}/logs")
 async def admin_logs(request: web.Request) -> web.Response:
     room = admin_room(request)
-    return web.Response(text=await request.app["runtime"].logs(room_container(room.id)))
+    return web.Response(text=await core_of(request)["runtime"].logs(room_container(room.id)))
 
 
 @routes.get("/api/v1/admin/schluessel")
 async def admin_keys(request: web.Request) -> web.Response:
     require_admin(request)
-    registry: Registry = request.app["registry"]
+    registry: Registry = core_of(request)["registry"]
     users: dict[str, list[str]] = {}
     for room in registry.rooms.values():
         for name in room.manifest.rechte.schluessel:
             users.setdefault(name, []).append(room.id)
-    names = set(request.app["vault"].names()) | set(users)
-    return web.json_response([{"name": n, "eingetragen": bool(request.app["vault"].get(n)),
+    names = set(core_of(request)["vault"].names()) | set(users)
+    return web.json_response([{"name": n, "eingetragen": bool(core_of(request)["vault"].get(n)),
                                "rooms": users.get(n, [])} for n in sorted(names)])
 
 
@@ -426,13 +438,13 @@ async def admin_set_key(request: web.Request) -> web.Response:
     require_admin(request)
     data = await body_of(request)
     try:
-        request.app["vault"].set(request.match_info["name"], str(data.get("wert") or ""))
+        core_of(request)["vault"].set(request.match_info["name"], str(data.get("wert") or ""))
     except ValueError as err:
         return fail(str(err))
     service = SERVICE_KEYS.get(request.match_info["name"])
-    if service and request.app["remote"].data[service]["aktiv"]:
+    if service and core_of(request)["remote"].data[service]["aktiv"]:
         try:
-            await start_service(request.app, service)     # restart with the new key
+            await start_service(core_of(request), service)     # restart with the new key
         except (ContainerError, ValueError) as err:
             return fail(f"Gespeichert, aber {service} nicht neu gestartet: {err}", 502)
     return web.json_response({"gespeichert": True})
@@ -441,24 +453,24 @@ async def admin_set_key(request: web.Request) -> web.Response:
 @routes.delete("/api/v1/admin/schluessel/{name}")
 async def admin_delete_key(request: web.Request) -> web.Response:
     require_admin(request)
-    request.app["vault"].delete(request.match_info["name"])
+    core_of(request)["vault"].delete(request.match_info["name"])
     return web.json_response({"geloescht": True})
 
 
 @routes.get("/api/v1/admin/system")
 async def admin_system(request: web.Request) -> web.Response:
     require_admin(request)
-    return web.json_response(request.app["system"].data)
+    return web.json_response(core_of(request)["system"].data)
 
 
 @routes.put("/api/v1/admin/system")
 async def admin_set_system(request: web.Request) -> web.Response:
     require_admin(request)
     try:
-        data = request.app["system"].update(await body_of(request))
+        data = core_of(request)["system"].update(await body_of(request))
     except ValueError as err:
         return fail(str(err))
-    request.app["bus"].tell_all({"typ": "system", "werte": request.app["system"].public()})
+    core_of(request)["bus"].tell_all({"typ": "system", "werte": core_of(request)["system"].public()})
     return web.json_response(data)
 
 
@@ -466,7 +478,7 @@ async def admin_set_system(request: web.Request) -> web.Response:
 async def admin_test_notify(request: web.Request) -> web.Response:
     require_admin(request)
     try:
-        await request.app["notifier"].send("lares", "Lares: Testnachricht ✅", urgent=True)
+        await core_of(request)["notifier"].send("lares", "Lares: Testnachricht ✅", urgent=True)
     except RuntimeError as err:
         return fail(str(err), 503)
     return web.json_response({"gesendet": True})
@@ -475,7 +487,7 @@ async def admin_test_notify(request: web.Request) -> web.Response:
 @routes.get("/api/v1/admin/ki")
 async def admin_ai_usage(request: web.Request) -> web.Response:
     require_admin(request)
-    return web.json_response(request.app["ai_usage"])
+    return web.json_response(core_of(request)["ai_usage"])
 
 
 # -- remote access (Tailscale, Cloudflare Tunnel) -------------------------------------------------
@@ -505,14 +517,14 @@ async def service_state(app: web.Application, name: str) -> dict:
 @routes.get("/api/v1/admin/fernzugriff")
 async def admin_remote(request: web.Request) -> web.Response:
     require_admin(request)
-    remote: Remote = request.app["remote"]
-    vault: Vault = request.app["vault"]
+    remote: Remote = core_of(request)["remote"]
+    vault: Vault = core_of(request)["vault"]
     return web.json_response({
         "tailscale": {**remote.data["tailscale"], "schluessel": bool(vault.get("tailscale_authkey")),
-                      **await service_state(request.app, "tailscale")},
+                      **await service_state(core_of(request), "tailscale")},
         "cloudflared": {**remote.data["cloudflared"], "schluessel": bool(vault.get("cloudflare_tunnel_token")),
                         "ziel": f"http://{remote.core_host}:{remote.public_port}",
-                        **await service_state(request.app, "cloudflared")},
+                        **await service_state(core_of(request), "cloudflared")},
         "freigaben": {rid: remote.public_release(rid) for rid in remote.data["freigaben"]},
     })
 
@@ -521,25 +533,25 @@ async def admin_remote(request: web.Request) -> web.Response:
 async def admin_set_remote(request: web.Request) -> web.Response:
     """Saves the settings and starts or stops the service accordingly."""
     require_admin(request)
-    name, remote = request.match_info["name"], request.app["remote"]
+    name, remote = request.match_info["name"], core_of(request)["remote"]
     data = await body_of(request)
     try:
         settings = remote.set_tailscale(data) if name == "tailscale" else remote.set_cloudflared(data)
         if settings["aktiv"]:
-            await start_service(request.app, name)
+            await start_service(core_of(request), name)
         else:
-            await request.app["runtime"].remove(service_container(name))
+            await core_of(request)["runtime"].remove(service_container(name))
     except ValueError as err:
         return fail(str(err))
     except ContainerError as err:
         return fail(str(err), 502)
-    return web.json_response({**settings, **await service_state(request.app, name)})
+    return web.json_response({**settings, **await service_state(core_of(request), name)})
 
 
 @routes.get("/api/v1/admin/fernzugriff/{name:tailscale|cloudflared}/logs")
 async def admin_remote_logs(request: web.Request) -> web.Response:
     require_admin(request)
-    return web.Response(text=await request.app["runtime"].logs(service_container(request.match_info["name"])))
+    return web.Response(text=await core_of(request)["runtime"].logs(service_container(request.match_info["name"])))
 
 
 @routes.put("/api/v1/admin/rooms/{room}/freigabe")
@@ -549,7 +561,7 @@ async def admin_release(request: web.Request) -> web.Response:
     if not room.manifest.port or not room.manifest.oeffentlich:
         return fail(f"{room.manifest.name} ist laut room.yaml nicht für das Internet gedacht (oberflaeche.oeffentlich)")
     try:
-        return web.json_response(request.app["remote"].release(room.id, await body_of(request)))
+        return web.json_response(core_of(request)["remote"].release(room.id, await body_of(request)))
     except ValueError as err:
         return fail(str(err))
 
@@ -557,13 +569,61 @@ async def admin_release(request: web.Request) -> web.Response:
 @routes.delete("/api/v1/admin/rooms/{room}/freigabe")
 async def admin_withdraw(request: web.Request) -> web.Response:
     room = admin_room(request)
-    request.app["remote"].release(room.id, None)
+    core_of(request)["remote"].release(room.id, None)
     return web.json_response({"freigabe": None})
+
+
+# -- accounts of the Atrium -----------------------------------------------------------------------
+@routes.get("/api/v1/admin/konten")
+async def admin_accounts(request: web.Request) -> web.Response:
+    require_admin(request)
+    return web.json_response(core_of(request)["accounts"].public())
+
+
+@routes.post("/api/v1/admin/konten")
+async def admin_create_account(request: web.Request) -> web.Response:
+    require_admin(request)
+    data = await body_of(request)
+    try:
+        core_of(request)["accounts"].create(str(data.get("name") or ""), str(data.get("passwort") or ""),
+                                            str(data.get("rolle") or "bewohner"))
+    except AccountError as err:
+        return fail(str(err))
+    return web.json_response(core_of(request)["accounts"].public())
+
+
+@routes.put("/api/v1/admin/konten/{name}")
+async def admin_change_account(request: web.Request) -> web.Response:
+    """{rolle?, passwort?} – a new password ends the sessions of that account."""
+    require_admin(request)
+    accounts: Accounts = core_of(request)["accounts"]
+    name = accounts.find(request.match_info["name"])
+    if not name:
+        return fail("Konto gibt es nicht", 404)
+    data = await body_of(request)
+    try:
+        if data.get("rolle"):
+            accounts.set_role(name, str(data["rolle"]))
+        if data.get("passwort"):
+            accounts.reset_password(name, str(data["passwort"]))
+    except AccountError as err:
+        return fail(str(err))
+    return web.json_response(accounts.public())
+
+
+@routes.delete("/api/v1/admin/konten/{name}")
+async def admin_delete_account(request: web.Request) -> web.Response:
+    require_admin(request)
+    try:
+        core_of(request)["accounts"].delete(request.match_info["name"])
+    except AccountError as err:
+        return fail(str(err))
+    return web.json_response(core_of(request)["accounts"].public())
 
 
 @routes.get("/api/v1/status")
 async def status(request: web.Request) -> web.Response:
-    return web.json_response({"lares": __version__, "laufzeit": request.app["runtime"].name})
+    return web.json_response({"lares": __version__, "laufzeit": core_of(request)["runtime"].name})
 
 
 # -- the app --------------------------------------------------------------------------------------
@@ -605,12 +665,16 @@ def make_app(data_dir: Path, runtime=None, background: bool = True, core_host: s
     app["ai_usage"] = storage.load(core_dir / "ki.json", {})
     app["runtime"] = runtime or NoRuntime()
     app["remote"] = Remote(core_dir, app["vault"], core_host, home_port, public_port)
+    app["accounts"] = Accounts(core_dir)
     app.add_routes(routes)
 
     async def on_startup(app: web.Application) -> None:
         app["http"] = aiohttp.ClientSession()
         app["notifier"] = Notifier(core_dir, app["vault"], app["system"], app["http"])
         app["scheduler"] = Scheduler(core_dir, app["registry"], app["system"], app["bus"], app["notifier"])
+        if app["accounts"].needs_setup:
+            log.warning("Lares ist noch nicht eingerichtet – Einrichtungscode für das Atrium: %s",
+                        app["accounts"].setup_code())
         if background:
             app["scheduler_task"] = asyncio.create_task(app["scheduler"].run())
             if not isinstance(app["runtime"], NoRuntime):
