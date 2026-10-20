@@ -1,6 +1,6 @@
 # Lares – Konzept
 
-> Stand: Oktober 2026 · Status: Konzept, noch kein Code
+> Stand: Oktober 2026 · Status: Etappe 1 begonnen – Lares Core 0.1 (siehe [core/README.md](../core/README.md))
 
 Lares ist ein eigenes, schlankes Betriebssystem für den Heimserver. Ein Kern verwaltet alles – Schlüssel,
 Benachrichtigungen, KI, Standort, Geräte –, und darauf laufen **Rooms**: kleine Apps wie ein Spieleabend, eine
@@ -17,7 +17,7 @@ Das *Atrium* war der zentrale Raum, von dem alle anderen Räume abgingen.
 | Begriff | Bedeutung |
 |---|---|
 | **Lares** | das Betriebssystem als Ganzes |
-| **Lares-Kern** | der zentrale Dienst (heute: Fabians-HA-Master) – verwaltet Rooms, Schlüssel, Rechte und die Systemdienste |
+| **Lares Core** | der zentrale Dienst (heute: Fabians-HA-Master) – verwaltet Rooms, Schlüssel, Rechte und die Systemdienste |
 | **Atrium** | das Home-Menü: Anmeldung, Startseite mit den Kacheln aller Rooms, Einstellungen |
 | **Room** / **Rooms** | eine App auf Lares (heute: ein Add-on), läuft als Container |
 | **Room Store** | der Katalog, aus dem Rooms installiert und aktualisiert werden |
@@ -36,7 +36,7 @@ Das *Atrium* war der zentrale Raum, von dem alle anderen Räume abgingen.
 │ Rooms:  Assistent · Spieleabend · Karte · Serien · Himmel ·       │
 │         Urlaub · Downloader · Gedächtnis · eigene Rooms …         │
 ├───────────────────────────────────────────────────────────────────┤
-│ Lares-Kern                                                        │
+│ Lares Core                                                        │
 │  Room-Verwaltung & Room Store · Rechte & Tokens · Schlüssel ·     │
 │  Benachrichtigung · KI (Claude) · Standort · Geräte · Ereignisse ·│
 │  Zeitpläne · Speicher · Backups · Updates · Fernzugriff · Logs    │
@@ -77,7 +77,7 @@ Ziel: Das Basis-OS ist langweilig und stabil. Neues passiert in Kern und Rooms, 
 
 ---
 
-## 4. Lares-Kern
+## 4. Lares Core
 
 Der Kern ist ein Dienst (heute der Master, weiterentwickelt). Er bietet:
 
@@ -89,7 +89,7 @@ Der Kern ist ein Dienst (heute der Master, weiterentwickelt). Er bietet:
 | **Rechte & Tokens** | jeder Room bekommt beim Start ein eigenes Token; der Kern prüft jede Anfrage gegen die Rechte |
 | **Schlüssel** | Tresor für API-Keys, Passwörter, Tokens (verschlüsselt auf der Datenpartition) |
 | **Benachrichtigung** | Nachrichten an Bewohner (iMessage über Inkbox, später weitere Wege), mit Ruhezeiten |
-| **KI** | Claude-Anfragen für Rooms (Anmeldung einmal im Kern), mit Kostenübersicht pro Room |
+| **KI** | KI-Anfragen der Rooms; beantwortet von dem Room mit dem Recht `ki_anbieter` (heute der Assistent mit seiner claude.ai-Anmeldung, ohne API-Key), mit Übersicht pro Room |
 | **Standort** | Standort der Bewohner – aus „Wo ist?“ (über den Device Core) oder OwnTracks |
 | **Geräte** | einheitliche Sicht auf alle Geräte aus dem Device Core; schalten, lesen, abonnieren |
 | **Ereignisse** | Nachrichten zwischen Rooms („paket.zugestellt“, „person.angekommen“) |
@@ -198,15 +198,18 @@ ort = room.standort()                                      # lat, lon, Genauigke
 lampe = room.geraet("light.wohnzimmer"); lampe.an(helligkeit=60)
 room.ereignis("serien.neue_folge", {"serie": "Severance"})
 room.abonnieren("person.angekommen", bei_ankunft)
-room.zeitplan("pruefen", alle="30m", aufruf=pruefen)
+room.zeitplan("pruefen", pruefen)                          # Takt steht in room.yaml
+room.befehl("demnaechst", demnaechst)                      # Befehl für den Assistenten
 room.daten  # Pfad zum eigenen Datenordner
+room.laufen()                                              # hält den Strom zum Kern offen
 ```
 
 | Schnittstelle | Beispiel |
 |---|---|
 | Authentifizierung | `Authorization: Bearer <Room-Token>` (vom Kern beim Start gesetzt) |
-| Basis-URL | `http://lares-kern/api/v1` |
-| Endpunkte | `/schluessel`, `/melden`, `/ki`, `/standort`, `/geraete`, `/ereignisse`, `/einstellungen` |
+| Basis-URL | `http://lares-core:8080/api/v1` (setzt der Kern als `LARES_URL`) |
+| Endpunkte | `/schluessel`, `/melden`, `/ki`, `/standort`, `/geraete`, `/ereignisse`, `/einstellungen`, `/befehle`, `/strom` |
+| Strom | Ein Room hält `GET /strom` offen (Server-Sent Events): Ereignisse, Zeitpläne, Befehle und KI-Fragen kommen dort an – ein Room braucht dafür keinen eigenen Server |
 
 ---
 
@@ -250,7 +253,7 @@ lares room veröffentlichen      # in den eigenen Room Store
 
 | Heute (Fabians-HA-Addons) | In Lares | Änderungen |
 |---|---|---|
-| Master | **Lares-Kern** | Room-Verwaltung, Atrium, Tokens und Device-Core-Anbindung kommen dazu |
+| Master | **Lares Core** | Room-Verwaltung, Atrium, Tokens und Device-Core-Anbindung kommen dazu |
 | Assistent | Room | Befehle der anderen Rooms statt eigener Skripte; Standort und Geräte über den Kern |
 | Spieleabend, Bestenliste | Rooms | Zugangscode und E-Mail über das SDK; Fernzugriff über den Kern |
 | Karte | Room | Standort über den Kern statt direkt von Home Assistant |
@@ -294,7 +297,6 @@ Phasen 1–3 bringen den größten Nutzen; Phase 4 lohnt sich, wenn alles stabil
 
 ## 14. Offene Fragen
 
-- Heißt der Kern auf Dauer **Lares-Kern** oder **Lares Core** (passend zu „Device Core“)?
 - Standort: nur „Wo ist?“ über den Device Core, oder zusätzlich OwnTracks für Bewohner ohne iPhone?
 - Mehrere Bewohner mit eigenen Konten und Rechten – von Anfang an oder später?
 - Welche Benachrichtigungswege außer iMessage (Push über das Atrium als Web-App, E-Mail)?

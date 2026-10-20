@@ -1,0 +1,24 @@
+# Ein kleiner Beispiel-Room: grüßt per Befehl, meldet sich jeden Morgen und begrüßt ankommende Bewohner.
+id: hallo
+name: Hallo
+version: 0.1.0
+beschreibung: Beispiel-Room für das SDK
+symbol: mdi:hand-wave
+image: ghcr.io/fvh02/{arch}-lares-hallo
+arch: [amd64, aarch64]
+
+rechte:
+  - benachrichtigen
+  - ereignisse: { senden: [hallo.*], empfangen: [person.*] }
+
+einstellungen:
+  gruss: { typ: text, standard: Hallo, name: Gruß }
+  morgens_melden: { typ: bool, standard: false, name: Jeden Morgen eine Nachricht }
+
+zeitplaene:
+  - { name: morgens, um: "07:30" }
+
+befehle:
+  - { name: gruessen, beschreibung: "Grüßt jemanden", argumente: [name] }
+
+ressourcen: { ram: 64M }

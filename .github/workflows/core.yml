@@ -1,0 +1,29 @@
+name: Lares Core
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r core/requirements.txt pyflakes
+      - run: python -m pyflakes core sdk examples
+      - run: python -m unittest discover -s tests -v
+        working-directory: core
+        env:
+          PYTHONPATH: .
+
+  image:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f core/Dockerfile -t lares-core:test .
+      - run: docker build -f examples/hallo/Dockerfile -t lares-hallo:test .
