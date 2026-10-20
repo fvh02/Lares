@@ -21,6 +21,7 @@ jobs:
             curl -sSL "https://github.com/letsencrypt/pebble/releases/download/v2.7.0/$tool-linux-amd64.tar.gz" \
               | tar -xz -C "$RUNNER_TEMP/pebble" --strip-components=3 "$tool-linux-amd64/linux/amd64/$tool"
           done
+          chmod +x "$RUNNER_TEMP"/pebble/*
           echo "LARES_PEBBLE_DIR=$RUNNER_TEMP/pebble" >> "$GITHUB_ENV"
       - run: python -m pyflakes core sdk examples
       - run: python -m unittest discover -s tests -v
