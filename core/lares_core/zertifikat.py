@@ -103,7 +103,8 @@ class Acme:
 
     async def post(self, url: str, payload=None, raw: bool = False):
         """Signed request; payload None is a POST-as-GET. Returns (data, headers)."""
-        for attempt in (1, 2):
+        # RFC 8555 §6.5: badNonce is retried with the fresh nonce from the error response.
+        for attempt in range(1, 6):
             jws = self._sign(url, payload, await self._nonce())
             async with self.http.post(url, data=json.dumps(jws), ssl=self.ssl, timeout=aiohttp.ClientTimeout(total=60),
                                       headers={"Content-Type": "application/jose+json"}) as resp:
@@ -115,7 +116,7 @@ class Acme:
                     problem = json.loads(text)
                 except ValueError:
                     problem = {"detail": text[:200]}
-                if problem.get("type", "").endswith(":badNonce") and attempt == 1:
+                if problem.get("type", "").endswith(":badNonce") and attempt < 5:
                     continue
                 raise CertError(f"Let's Encrypt: {problem.get('detail') or problem.get('type') or resp.status}")
         raise CertError("Let's Encrypt antwortet nicht")
